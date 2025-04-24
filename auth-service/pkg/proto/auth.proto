@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package auth.v1;
+
+option go_package = "github.com/Miraines/MoonyAndStarry/auth-service/pkg/proto/v1;authv1";
+
+service Auth {
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+
+  rpc Login(LoginRequest) returns (LoginResponse);
+
+  rpc Refresh(RefreshRequest) returns (RefreshResponse);
+
+  rpc Validate(ValidateRequest) returns (ValidateResponse);
+
+  rpc Logout(ValidateRequest) returns (ValidateResponse);
+
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+message RegisterRequest {
+  string email = 1;
+  string password = 2;
+  string username = 3;
+}
+
+message RegisterResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+  int64 TTL = 3;
+  string user_id = 4;
+}
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+  int64 TTL = 3;
+  string user_id = 4;
+}
+
+message RefreshRequest {
+  string refresh_token = 1;
+}
+
+message RefreshResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+}
+
+message ValidateRequest {
+  string access_token = 1;
+}
+
+message ValidateResponse {
+  string user_id = 1;
+  int64 timestamp = 2;
+}
+
+message LogoutRequest {
+  string refresh_token = 1;
+}
+
+message LogoutResponse {
+  bool success = 1;
+}
+
+message HealthCheckRequest {
+}
+
+enum HealthStatus{
+  UNKNOWN = 0;
+  SERVING = 1;
+  NOT_SERVING = 2;
+}
+
+message HealthCheckResponse {
+  HealthStatus status = 1;
+  string version = 2;
+  int64 timestamp = 3;
+}
