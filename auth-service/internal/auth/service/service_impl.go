@@ -66,6 +66,7 @@ func (a *authService) Register(ctx context.Context, dto dto.RegisterDTO) (model.
 		RefreshToken: refreshToken,
 		AccessTTL:    atExp.Sub(now),
 		RefreshTTL:   rtExp.Sub(now),
+		UserId:       res,
 	}, nil
 }
 
@@ -108,6 +109,7 @@ func (a *authService) Login(ctx context.Context, dto dto.LoginDTO) (model.TokenP
 		RefreshToken: refreshToken,
 		AccessTTL:    atExp.Sub(now),
 		RefreshTTL:   rtExp.Sub(now),
+		UserId:       user.ID,
 	}, nil
 }
 
@@ -189,6 +191,7 @@ func (a *authService) Refresh(ctx context.Context, dto dto.RefreshDTO) (model.To
 		RefreshToken: refreshToken,
 		AccessTTL:    atExp.Sub(now),
 		RefreshTTL:   rtExp.Sub(now),
+		UserId:       uid,
 	}, nil
 }
 

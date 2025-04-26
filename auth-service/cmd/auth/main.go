@@ -1,86 +1,82 @@
 package main
 
 import (
+	"github.com/Miraines/MoonyAndStarry/auth-service/internal/auth/jwt"
+	"github.com/Miraines/MoonyAndStarry/auth-service/internal/auth/service"
 	"github.com/Miraines/MoonyAndStarry/auth-service/internal/config"
+	myPostgresRepo "github.com/Miraines/MoonyAndStarry/auth-service/internal/repo/postgres"
+	myRedisRepo "github.com/Miraines/MoonyAndStarry/auth-service/internal/repo/redis"
+	"github.com/Miraines/MoonyAndStarry/auth-service/internal/server"
+	myGrpc "github.com/Miraines/MoonyAndStarry/auth-service/internal/transport/grpc"
 	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	migratePostgres "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"log"
+
+	"github.com/go-playground/validator"
+	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"log"
+	gormLogger "gorm.io/gorm/logger"
 )
 
 func main() {
-
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("Не удалось загрузить конфиг: %v", err)
+		log.Fatalf("config load failed: %v", err)
 	}
 
-	sourceURL := "file://scripts/db/migrations"
-	m, err := migrate.New(sourceURL, cfg.DatabaseURL)
+	zapLogger, err := zap.NewProduction()
 	if err != nil {
-		log.Fatalf("Не удалось создать инстанс мигратора: %v", err)
+		log.Fatalf("zap logger init failed: %v", err)
 	}
+	defer zapLogger.Sync()
 
-	version, dirty, err := m.Version()
-	if err != nil && err != migrate.ErrNilVersion {
-		log.Fatalf("Не удалось получить версию БД: %v", err)
-	}
-	if dirty {
-		prev := int(version) - 1
-		if prev < 0 {
-			prev = 0
-		}
-		log.Printf("База в dirty‑состоянии (версия %d), откатываю к версии %d", version, prev)
-		if err := m.Force(int(uint(prev))); err != nil {
-			log.Fatalf("Не удалось принудительно сбросить версию на %d: %v", prev, err)
-		}
-		log.Printf("Успешно откатились к версии %d", prev)
-	}
-
-	if err := m.Up(); err != nil {
-		if err == migrate.ErrNoChange {
-			log.Println("Миграции не найдены — база актуальна")
-		} else {
-			// при ошибке снова проверяем dirty и пытаемся вернуть на предыдущую версию
-			v2, dirty2, verr := m.Version()
-			if verr == nil && dirty2 {
-				prev2 := int(v2) - 1
-				if prev2 < 0 {
-					prev2 = 0
-				}
-				log.Printf("Ошибка миграции на версии %d: %v", v2, err)
-				log.Printf("Откатываемся к версии %d", prev2)
-				if ferr := m.Force(int(uint(prev2))); ferr != nil {
-					log.Fatalf("Не удалось принудительно сбросить версию на %d: %v", prev2, ferr)
-				}
-				log.Printf("Успешно откатились к версии %d после сбоя", prev2)
-			}
-			log.Fatalf("Не удалось применить миграции: %v", err)
-		}
-	}
-	log.Println("Миграции успешно применены")
-
-	db, err := gorm.Open(postgres.Open(cfg.DatabaseURL), &gorm.Config{})
+	db, err := gorm.Open(postgres.Open(cfg.DatabaseURL), &gorm.Config{
+		Logger: gormLogger.New(
+			zap.NewStdLog(zap.L()),
+			gormLogger.Config{LogLevel: gormLogger.Warn},
+		),
+	})
 	if err != nil {
-		log.Fatalf("Не удалось подключиться к базе данных: %v", err)
+		zapLogger.Fatal("failed to connect to database", zap.Error(err))
 	}
-
-	log.Println("Приложение запущено, готово принимать запросы...")
 
 	sqlDB, err := db.DB()
-
 	if err != nil {
-		log.Fatalf("Не удалось получить экземпляр базы данных: %v", err)
+		zapLogger.Fatal("getting sql.DB failed", zap.Error(err))
 	}
 
-	if err := sqlDB.Ping(); err != nil {
-		log.Fatalf("Не удалось пинговать базу: %v", err)
+	driver, err := migratePostgres.WithInstance(sqlDB, &migratePostgres.Config{})
+	if err != nil {
+		zapLogger.Fatal("migrate driver init failed", zap.Error(err))
 	}
 
-	defer sqlDB.Close()
+	m, err := migrate.NewWithDatabaseInstance(
+		"file://scripts/db/migrations",
+		"postgres", driver,
+	)
+	if err != nil {
+		zapLogger.Fatal("migrate init failed", zap.Error(err))
+	}
+	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+		zapLogger.Fatal("migrate up failed", zap.Error(err))
+	}
 
-	log.Println("Подключение к базе проверено успешно")
-	log.Println("Приложение запущено, готово принимать запросы...")
+	redisCli := redis.NewClient(&redis.Options{
+		Addr:     cfg.RedisAddress,
+		Password: cfg.RedisPassword,
+		DB:       cfg.RedisDB,
+	})
+
+	userRepo := myPostgresRepo.NewPostgresUserRepo(db)
+	tokenRepo := myRedisRepo.NewRedisTokenRepo(redisCli)
+	jwtUtil, _ := jwt.NewJWTUtil(cfg)
+	svc := service.NewAuthService(userRepo, tokenRepo, jwtUtil, cfg, validator.New())
+	handler := myGrpc.NewHandler(svc, db, redisCli)
+
+	if err := server.StartGRPCServer(cfg, handler, zapLogger); err != nil {
+		zapLogger.Fatal("server error", zap.Error(err))
+	}
 }

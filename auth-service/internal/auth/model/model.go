@@ -19,4 +19,5 @@ type TokenPair struct {
 	RefreshToken string
 	AccessTTL    time.Duration
 	RefreshTTL   time.Duration
+	UserId       uuid.UUID
 }

@@ -20,6 +20,7 @@ type Config struct {
 	PasswordPepper    string
 	Issuer            string
 	Audience          string
+	GRPCAddress       string
 }
 
 func Load() (*Config, error) {
@@ -42,6 +43,7 @@ func Load() (*Config, error) {
 		"PASSWORD_PEPPER",
 		"JWT_ISSUER",
 		"JWT_AUDIENCE",
+		"GRPC_ADDRESS",
 	} {
 		if err := viper.BindEnv(key); err != nil {
 			return nil, fmt.Errorf("bind env %s: %w", key, err)
@@ -66,6 +68,7 @@ func Load() (*Config, error) {
 		PasswordPepper:    viper.GetString("PASSWORD_PEPPER"),
 		Issuer:            viper.GetString("JWT_ISSUER"),
 		Audience:          viper.GetString("JWT_AUDIENCE"),
+		GRPCAddress:       viper.GetString("GRPC_ADDRESS"),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -88,6 +91,9 @@ func Load() (*Config, error) {
 	}
 	if cfg.PasswordPepper == "" {
 		return nil, fmt.Errorf("PASSWORD_PEPPER не задан")
+	}
+	if cfg.GRPCAddress == "" {
+		return nil, fmt.Errorf("GRPC_ADDRESS не задан")
 	}
 
 	return cfg, nil

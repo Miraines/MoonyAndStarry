@@ -1,18 +1,26 @@
 version: "3.8"
-
 services:
-  db:
+  postgres:
     image: postgres:17
-    container_name: MoonyStarry_db
-    restart: unless-stopped
     environment:
       POSTGRES_USER: appuser
       POSTGRES_PASSWORD: 3936570359az
       POSTGRES_DB: appdb
     ports:
       - "5433:5432"
-    volumes:
-      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appuser"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-volumes:
-  db_data:
+  redis:
+    image: redis:7
+    command: ["redis-server", "--requirepass", ""]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "PING"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
