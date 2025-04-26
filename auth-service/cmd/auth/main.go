@@ -2,23 +2,27 @@
 package main
 
 import (
-	"github.com/Miraines/MoonyAndStarry/auth-service/internal/auth/service"
-	"github.com/go-playground/validator"
 	"net/http"
 	"time"
 	"unicode"
 
-	"github.com/Miraines/MoonyAndStarry/auth-service/internal/auth/dto"
-	"github.com/Miraines/MoonyAndStarry/auth-service/internal/auth/errors"
-	"github.com/Miraines/MoonyAndStarry/auth-service/internal/auth/jwt"
-	"github.com/Miraines/MoonyAndStarry/auth-service/internal/config"
-	myPostgresRepo "github.com/Miraines/MoonyAndStarry/auth-service/internal/repo/postgres"
-	myRedisRepo "github.com/Miraines/MoonyAndStarry/auth-service/internal/repo/redis"
 	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+
+	"github.com/Miraines/MoonyAndStarry/auth-service/internal/auth/dto"
+	"github.com/Miraines/MoonyAndStarry/auth-service/internal/auth/errors"
+	"github.com/Miraines/MoonyAndStarry/auth-service/internal/auth/jwt"
+	"github.com/Miraines/MoonyAndStarry/auth-service/internal/auth/service"
+	"github.com/Miraines/MoonyAndStarry/auth-service/internal/config"
+	myPostgresRepo "github.com/Miraines/MoonyAndStarry/auth-service/internal/repo/postgres"
+	myRedisRepo "github.com/Miraines/MoonyAndStarry/auth-service/internal/repo/redis"
+
+	"github.com/Miraines/MoonyAndStarry/auth-service/internal/server"
+	myGrpc "github.com/Miraines/MoonyAndStarry/auth-service/internal/transport/grpc"
 )
 
 func main() {
@@ -38,12 +42,8 @@ func main() {
 		DB:       cfg.RedisDB,
 	})
 
-	// 3) Сервис
-	userRepo := myPostgresRepo.NewPostgresUserRepo(db)
-	tokenRepo := myRedisRepo.NewRedisTokenRepo(redisCli)
-	jwtUtil, _ := jwt.NewJWTUtil(cfg)
+	// 3) Сервис и валидатор
 	validate := validator.New()
-
 	_ = validate.RegisterValidation("strongpwd", func(fl validator.FieldLevel) bool {
 		pwd := fl.Field().String()
 		if len(pwd) < 8 {
@@ -61,10 +61,22 @@ func main() {
 		return hasUpper && hasDigit
 	})
 
+	userRepo := myPostgresRepo.NewPostgresUserRepo(db)
+	tokenRepo := myRedisRepo.NewRedisTokenRepo(redisCli)
+	jwtUtil, _ := jwt.NewJWTUtil(cfg)
 	svc := service.NewAuthService(userRepo, tokenRepo, jwtUtil, cfg, validate)
 
-	// 4) Gin-роутер
+	// <<< ДОБАВЛЕНО: запуск gRPC-сервера в горутине
+	go func() {
+		grpcHandler := myGrpc.NewHandler(svc, db, redisCli)
+		if err := server.StartGRPCServer(cfg, grpcHandler, zapLog); err != nil {
+			zapLog.Fatal("gRPC server error", zap.Error(err))
+		}
+	}()
+
+	// 4) Gin-роутер для HTTP/REST
 	router := gin.Default()
+
 	router.POST("/register", func(c *gin.Context) {
 		var body dto.RegisterDTO
 		if err := c.ShouldBindJSON(&body); err != nil {
@@ -134,15 +146,13 @@ func main() {
 	})
 
 	router.GET("/health", func(c *gin.Context) {
-		// простая проверка — можно адаптировать по своему
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "time": time.Now().Unix()})
 	})
 
-	// 5) Запуск HTTP на 8080
+	// 5) Запуск HTTP на :8080
 	router.Run(":8080")
 }
 
-// handleError мапит ваши внутренние ошибки в HTTP-коды
 func handleError(c *gin.Context, err error) {
 	switch {
 	case errors.IsInvalidArgument(err):

@@ -7,7 +7,7 @@ import (
 	"github.com/Miraines/MoonyAndStarry/auth-service/internal/auth/model"
 	"github.com/Miraines/MoonyAndStarry/auth-service/internal/config"
 	"github.com/Miraines/MoonyAndStarry/auth-service/internal/repo"
-	"github.com/go-playground/validator"
+	validate "github.com/go-playground/validator/v10"
 )
 
 type AuthService interface {
@@ -18,7 +18,7 @@ type AuthService interface {
 	Logout(ctx context.Context, dto dto.LogoutDTO) error
 }
 
-func NewAuthService(userRepo repo.UserRepo, tokenRepo repo.TokenRepo, jwtUtil jwt.JWTUtil, cfg *config.Config, v *validator.Validate) AuthService {
+func NewAuthService(userRepo repo.UserRepo, tokenRepo repo.TokenRepo, jwtUtil jwt.JWTUtil, cfg *config.Config, v *validate.Validate) AuthService {
 	return &authService{
 		userRepo:  userRepo,
 		tokenRepo: tokenRepo,

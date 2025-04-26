@@ -10,7 +10,7 @@ import (
 	"github.com/Miraines/MoonyAndStarry/auth-service/internal/config"
 	"github.com/Miraines/MoonyAndStarry/auth-service/internal/repo"
 	"github.com/alexedwards/argon2id"
-	"github.com/go-playground/validator"
+	validate "github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 	"time"
 )
@@ -20,7 +20,7 @@ type authService struct {
 	tokenRepo repo.TokenRepo
 	jwtUtil   jwt.JWTUtil
 	cfg       *config.Config
-	v         *validator.Validate
+	v         *validate.Validate
 }
 
 func (a *authService) Register(ctx context.Context, dto dto.RegisterDTO) (model.TokenPair, error) {
