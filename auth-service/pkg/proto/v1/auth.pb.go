@@ -134,8 +134,9 @@ type RegisterResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AccessToken   string                 `protobuf:"bytes,1,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"`
 	RefreshToken  string                 `protobuf:"bytes,2,opt,name=refresh_token,json=refreshToken,proto3" json:"refresh_token,omitempty"`
-	TTL           int64                  `protobuf:"varint,3,opt,name=TTL,proto3" json:"TTL,omitempty"`
-	UserId        string                 `protobuf:"bytes,4,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	AccessTtl     int64                  `protobuf:"varint,3,opt,name=access_ttl,json=accessTtl,proto3" json:"access_ttl,omitempty"`
+	RefreshTtl    int64                  `protobuf:"varint,4,opt,name=refresh_ttl,json=refreshTtl,proto3" json:"refresh_ttl,omitempty"`
+	UserId        string                 `protobuf:"bytes,5,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -184,9 +185,16 @@ func (x *RegisterResponse) GetRefreshToken() string {
 	return ""
 }
 
-func (x *RegisterResponse) GetTTL() int64 {
+func (x *RegisterResponse) GetAccessTtl() int64 {
 	if x != nil {
-		return x.TTL
+		return x.AccessTtl
+	}
+	return 0
+}
+
+func (x *RegisterResponse) GetRefreshTtl() int64 {
+	if x != nil {
+		return x.RefreshTtl
 	}
 	return 0
 }
@@ -254,8 +262,9 @@ type LoginResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AccessToken   string                 `protobuf:"bytes,1,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"`
 	RefreshToken  string                 `protobuf:"bytes,2,opt,name=refresh_token,json=refreshToken,proto3" json:"refresh_token,omitempty"`
-	TTL           int64                  `protobuf:"varint,3,opt,name=TTL,proto3" json:"TTL,omitempty"`
-	UserId        string                 `protobuf:"bytes,4,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	AccessTtl     int64                  `protobuf:"varint,3,opt,name=access_ttl,json=accessTtl,proto3" json:"access_ttl,omitempty"`
+	RefreshTtl    int64                  `protobuf:"varint,4,opt,name=refresh_ttl,json=refreshTtl,proto3" json:"refresh_ttl,omitempty"`
+	UserId        string                 `protobuf:"bytes,5,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -304,9 +313,16 @@ func (x *LoginResponse) GetRefreshToken() string {
 	return ""
 }
 
-func (x *LoginResponse) GetTTL() int64 {
+func (x *LoginResponse) GetAccessTtl() int64 {
 	if x != nil {
-		return x.TTL
+		return x.AccessTtl
+	}
+	return 0
+}
+
+func (x *LoginResponse) GetRefreshTtl() int64 {
+	if x != nil {
+		return x.RefreshTtl
 	}
 	return 0
 }
@@ -703,20 +719,26 @@ const file_auth_proto_rawDesc = "" +
 	"\x0fRegisterRequest\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x1a\n" +
 	"\bpassword\x18\x02 \x01(\tR\bpassword\x12\x1a\n" +
-	"\busername\x18\x03 \x01(\tR\busername\"\x85\x01\n" +
+	"\busername\x18\x03 \x01(\tR\busername\"\xb3\x01\n" +
 	"\x10RegisterResponse\x12!\n" +
 	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\x12#\n" +
-	"\rrefresh_token\x18\x02 \x01(\tR\frefreshToken\x12\x10\n" +
-	"\x03TTL\x18\x03 \x01(\x03R\x03TTL\x12\x17\n" +
-	"\auser_id\x18\x04 \x01(\tR\x06userId\"@\n" +
+	"\rrefresh_token\x18\x02 \x01(\tR\frefreshToken\x12\x1d\n" +
+	"\n" +
+	"access_ttl\x18\x03 \x01(\x03R\taccessTtl\x12\x1f\n" +
+	"\vrefresh_ttl\x18\x04 \x01(\x03R\n" +
+	"refreshTtl\x12\x17\n" +
+	"\auser_id\x18\x05 \x01(\tR\x06userId\"@\n" +
 	"\fLoginRequest\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x1a\n" +
-	"\bpassword\x18\x02 \x01(\tR\bpassword\"\x82\x01\n" +
+	"\bpassword\x18\x02 \x01(\tR\bpassword\"\xb0\x01\n" +
 	"\rLoginResponse\x12!\n" +
 	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\x12#\n" +
-	"\rrefresh_token\x18\x02 \x01(\tR\frefreshToken\x12\x10\n" +
-	"\x03TTL\x18\x03 \x01(\x03R\x03TTL\x12\x17\n" +
-	"\auser_id\x18\x04 \x01(\tR\x06userId\"5\n" +
+	"\rrefresh_token\x18\x02 \x01(\tR\frefreshToken\x12\x1d\n" +
+	"\n" +
+	"access_ttl\x18\x03 \x01(\x03R\taccessTtl\x12\x1f\n" +
+	"\vrefresh_ttl\x18\x04 \x01(\x03R\n" +
+	"refreshTtl\x12\x17\n" +
+	"\auser_id\x18\x05 \x01(\tR\x06userId\"5\n" +
 	"\x0eRefreshRequest\x12#\n" +
 	"\rrefresh_token\x18\x01 \x01(\tR\frefreshToken\"Y\n" +
 	"\x0fRefreshResponse\x12!\n" +
@@ -739,13 +761,13 @@ const file_auth_proto_rawDesc = "" +
 	"\fHealthStatus\x12\v\n" +
 	"\aUNKNOWN\x10\x00\x12\v\n" +
 	"\aSERVING\x10\x01\x12\x0f\n" +
-	"\vNOT_SERVING\x10\x022\x87\x03\n" +
+	"\vNOT_SERVING\x10\x022\x83\x03\n" +
 	"\x04Auth\x12?\n" +
 	"\bRegister\x12\x18.auth.v1.RegisterRequest\x1a\x19.auth.v1.RegisterResponse\x126\n" +
 	"\x05Login\x12\x15.auth.v1.LoginRequest\x1a\x16.auth.v1.LoginResponse\x12<\n" +
 	"\aRefresh\x12\x17.auth.v1.RefreshRequest\x1a\x18.auth.v1.RefreshResponse\x12?\n" +
-	"\bValidate\x12\x18.auth.v1.ValidateRequest\x1a\x19.auth.v1.ValidateResponse\x12=\n" +
-	"\x06Logout\x12\x18.auth.v1.ValidateRequest\x1a\x19.auth.v1.ValidateResponse\x12H\n" +
+	"\bValidate\x12\x18.auth.v1.ValidateRequest\x1a\x19.auth.v1.ValidateResponse\x129\n" +
+	"\x06Logout\x12\x16.auth.v1.LogoutRequest\x1a\x17.auth.v1.LogoutResponse\x12H\n" +
 	"\vHealthCheck\x12\x1b.auth.v1.HealthCheckRequest\x1a\x1c.auth.v1.HealthCheckResponseBEZCgithub.com/Miraines/MoonyAndStarry/auth-service/pkg/proto/v1;authv1b\x06proto3"
 
 var (
@@ -783,13 +805,13 @@ var file_auth_proto_depIdxs = []int32{
 	3,  // 2: auth.v1.Auth.Login:input_type -> auth.v1.LoginRequest
 	5,  // 3: auth.v1.Auth.Refresh:input_type -> auth.v1.RefreshRequest
 	7,  // 4: auth.v1.Auth.Validate:input_type -> auth.v1.ValidateRequest
-	7,  // 5: auth.v1.Auth.Logout:input_type -> auth.v1.ValidateRequest
+	9,  // 5: auth.v1.Auth.Logout:input_type -> auth.v1.LogoutRequest
 	11, // 6: auth.v1.Auth.HealthCheck:input_type -> auth.v1.HealthCheckRequest
 	2,  // 7: auth.v1.Auth.Register:output_type -> auth.v1.RegisterResponse
 	4,  // 8: auth.v1.Auth.Login:output_type -> auth.v1.LoginResponse
 	6,  // 9: auth.v1.Auth.Refresh:output_type -> auth.v1.RefreshResponse
 	8,  // 10: auth.v1.Auth.Validate:output_type -> auth.v1.ValidateResponse
-	8,  // 11: auth.v1.Auth.Logout:output_type -> auth.v1.ValidateResponse
+	10, // 11: auth.v1.Auth.Logout:output_type -> auth.v1.LogoutResponse
 	12, // 12: auth.v1.Auth.HealthCheck:output_type -> auth.v1.HealthCheckResponse
 	7,  // [7:13] is the sub-list for method output_type
 	1,  // [1:7] is the sub-list for method input_type

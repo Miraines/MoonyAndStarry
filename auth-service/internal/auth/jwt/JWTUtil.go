@@ -9,12 +9,10 @@ import (
 type AccessClaims struct {
 	jwt.RegisteredClaims
 	Roles []string `json:"roles"`
-	Jti   string   `json:"jti"`
 }
 
 type RefreshClaims struct {
 	jwt.RegisteredClaims
-	Jti string `json:"jti"`
 }
 
 type JWTUtil interface {
