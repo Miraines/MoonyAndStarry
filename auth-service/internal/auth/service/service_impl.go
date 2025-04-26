@@ -23,11 +23,9 @@ type authService struct {
 	v         *validator.Validate
 }
 
-var v = validator.New()
-
 func (a *authService) Register(ctx context.Context, dto dto.RegisterDTO) (model.TokenPair, error) {
 
-	if err := v.Struct(dto); err != nil {
+	if err := a.v.Struct(dto); err != nil {
 		return model.TokenPair{}, customErrors.NewInvalidArgument(err.Error())
 	}
 
@@ -45,15 +43,15 @@ func (a *authService) Register(ctx context.Context, dto dto.RegisterDTO) (model.
 	}
 	res, err := a.userRepo.CreateUser(ctx, user)
 
-	if errors.Is(err, customErrors.ErrAlreadyExists) {
-		return model.TokenPair{}, customErrors.ErrAlreadyExists
-	}
-
 	if err != nil {
+		if errors.Is(err, customErrors.ErrAlreadyExists) {
+			return model.TokenPair{}, customErrors.ErrAlreadyExists
+		}
+
 		return model.TokenPair{}, customErrors.WrapInternal(err, "Register")
 	}
 
-	accessToken, atExp, _, err := a.jwtUtil.GenerateAccessToken(res, nil)
+	accessToken, atExp, _, err := a.jwtUtil.GenerateAccessToken(res, []string{"user"})
 	if err != nil {
 		return model.TokenPair{}, customErrors.WrapInternal(err, "Register")
 	}

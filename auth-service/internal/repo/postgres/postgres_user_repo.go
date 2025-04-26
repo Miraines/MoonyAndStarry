@@ -14,7 +14,7 @@ type PostgresUserRepo struct {
 	db *gorm.DB
 }
 
-func NewPostgresRepo(db *gorm.DB) *PostgresUserRepo {
+func NewPostgresUserRepo(db *gorm.DB) *PostgresUserRepo {
 	return &PostgresUserRepo{db: db}
 }
 
@@ -74,8 +74,11 @@ func (p *PostgresUserRepo) UpdateUser(ctx context.Context, user model.User) erro
 	if err := res.Error; err != nil {
 		return customErrors.WrapInternal(err, "UpdateUser")
 	}
-	if res.RowsAffected == 0 {
-		return customErrors.ErrNotFound
+	if res.RowsAffected == 0 && user.ID != uuid.Nil {
+		exists := p.db.First(&model.User{}, "id = ?", user.ID).Error
+		if errors.Is(exists, gorm.ErrRecordNotFound) {
+			return customErrors.ErrNotFound
+		}
 	}
 
 	return nil

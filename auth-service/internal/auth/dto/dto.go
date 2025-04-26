@@ -1,24 +1,24 @@
 package dto
 
 type RegisterDTO struct {
-	Email    string `validate:"required,email"`
-	Password string `validate:"required,min=8,matches=^(?=.*[A-Z])(?=.*\\d).+$"`
-	Username string `validate:"required,alphanum,min=3,max=20"`
+	Email    string `json:"email"    validate:"required,email"`
+	Password string `json:"password" validate:"required,min=8,regex=^(?=.*[A-Z])(?=.*\\d).+$"`
+	Username string `json:"username" validate:"required,alphanum,min=3,max=20"`
 }
 
 type LoginDTO struct {
-	Email    string `validate:"required,email"`
-	Password string `validate:"required"`
+	Email    string `json:"email"    validate:"required,email"`
+	Password string `json:"password" validate:"required"`
 }
 
 type RefreshDTO struct {
-	RefreshToken string `validate:"required"`
+	RefreshToken string `json:"refresh_token" validate:"required"`
 }
 
 type ValidateDTO struct {
-	AccessToken string `validate:"required"`
+	AccessToken string `json:"access_token" validate:"required"`
 }
 
 type LogoutDTO struct {
-	RefreshToken string `validate:"required"`
+	RefreshToken string `json:"refresh_token" validate:"required"`
 }

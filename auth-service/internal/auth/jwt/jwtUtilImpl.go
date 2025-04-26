@@ -7,11 +7,11 @@ import (
 	"github.com/Miraines/MoonyAndStarry/auth-service/internal/config"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"io/ioutil"
+	"os"
 	"time"
 )
 
-type jwtUtilImpl struct {
+type JwtUtilImpl struct {
 	privateKey *rsa.PrivateKey
 	publicKey  *rsa.PublicKey
 	accessTTL  time.Duration
@@ -20,8 +20,8 @@ type jwtUtilImpl struct {
 	audience   string
 }
 
-func NewJWTUtil(cfg *config.Config) (*jwtUtilImpl, error) {
-	privPem, err := ioutil.ReadFile(cfg.JWTPrivateKeyPath)
+func NewJWTUtil(cfg *config.Config) (*JwtUtilImpl, error) {
+	privPem, err := os.ReadFile(cfg.JWTPrivateKeyPath)
 	if err != nil {
 		return nil, customErrors.WrapInternal(err, "read private key")
 	}
@@ -30,7 +30,7 @@ func NewJWTUtil(cfg *config.Config) (*jwtUtilImpl, error) {
 		return nil, customErrors.WrapInternal(err, "parse private key")
 	}
 
-	pubPem, err := ioutil.ReadFile(cfg.JWTPublicKeyPath)
+	pubPem, err := os.ReadFile(cfg.JWTPublicKeyPath)
 	if err != nil {
 		return nil, customErrors.WrapInternal(err, "read public key")
 	}
@@ -39,25 +39,27 @@ func NewJWTUtil(cfg *config.Config) (*jwtUtilImpl, error) {
 		return nil, customErrors.WrapInternal(err, "parse public key")
 	}
 
-	return &jwtUtilImpl{
+	return &JwtUtilImpl{
 		privateKey: privKey,
 		publicKey:  pubKey,
 		accessTTL:  cfg.AccessTokenTTL,
 		refreshTTL: cfg.RefreshTokenTTL,
+		issuer:     cfg.Issuer,
+		audience:   cfg.Audience,
 	}, nil
 }
 
-func (j *jwtUtilImpl) GenerateAccessToken(userID string, roles []string) (token string, exp time.Time, jti string, err error) {
+func (j *JwtUtilImpl) GenerateAccessToken(userID uuid.UUID, roles []string) (token string, exp time.Time, jti string, err error) {
 	jti = uuid.NewString()
 	now := time.Now()
 
 	claims := AccessClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   userID,
-			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(j.accessTTL)),
+			Subject:   userID.String(),
 			Issuer:    j.issuer,
 			Audience:  jwt.ClaimStrings{j.audience},
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(j.accessTTL)),
 			ID:        jti,
 		},
 		Roles: roles,
@@ -71,17 +73,17 @@ func (j *jwtUtilImpl) GenerateAccessToken(userID string, roles []string) (token 
 	return signed, claims.ExpiresAt.Time, jti, nil
 }
 
-func (j *jwtUtilImpl) GenerateRefreshToken(userID string) (token string, exp time.Time, jti string, err error) {
+func (j *JwtUtilImpl) GenerateRefreshToken(userID uuid.UUID) (token string, exp time.Time, jti string, err error) {
 	jti = uuid.NewString()
 	now := time.Now()
 
 	claims := RefreshClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   userID,
-			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(j.refreshTTL)),
+			Subject:   userID.String(),
 			Issuer:    j.issuer,
 			Audience:  jwt.ClaimStrings{j.audience},
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(j.refreshTTL)),
 			ID:        jti,
 		},
 	}
@@ -94,7 +96,7 @@ func (j *jwtUtilImpl) GenerateRefreshToken(userID string) (token string, exp tim
 	return signed, claims.ExpiresAt.Time, jti, nil
 }
 
-func (j *jwtUtilImpl) ValidateAccessToken(raw string) (AccessClaims, error) {
+func (j *JwtUtilImpl) ValidateAccessToken(raw string) (AccessClaims, error) {
 	token, err := jwt.ParseWithClaims(raw, &AccessClaims{}, func(t *jwt.Token) (interface{}, error) {
 		if t.Method.Alg() != jwt.SigningMethodRS256.Alg() {
 			return nil, customErrors.ErrInvalidToken
@@ -102,11 +104,7 @@ func (j *jwtUtilImpl) ValidateAccessToken(raw string) (AccessClaims, error) {
 		return j.publicKey, nil
 	})
 
-	if err != nil {
-		return AccessClaims{}, customErrors.ErrInvalidToken
-	}
-
-	if !token.Valid {
+	if err != nil || !token.Valid {
 		return AccessClaims{}, customErrors.ErrInvalidToken
 	}
 
@@ -117,10 +115,27 @@ func (j *jwtUtilImpl) ValidateAccessToken(raw string) (AccessClaims, error) {
 		)
 	}
 
+	if j.issuer != "" && claims.Issuer != j.issuer {
+		return AccessClaims{}, customErrors.ErrInvalidToken
+	}
+
+	if j.audience != "" {
+		okAudi := false
+		for _, a := range claims.Audience {
+			if a == j.audience {
+				okAudi = true
+				break
+			}
+		}
+		if !okAudi {
+			return AccessClaims{}, customErrors.ErrInvalidToken
+		}
+	}
+
 	return *claims, nil
 }
 
-func (j *jwtUtilImpl) ValidateRefreshToken(raw string) (RefreshClaims, error) {
+func (j *JwtUtilImpl) ValidateRefreshToken(raw string) (RefreshClaims, error) {
 	token, err := jwt.ParseWithClaims(raw, &RefreshClaims{}, func(t *jwt.Token) (interface{}, error) {
 		if t.Method.Alg() != jwt.SigningMethodRS256.Alg() {
 			return nil, customErrors.ErrInvalidToken
@@ -128,17 +143,32 @@ func (j *jwtUtilImpl) ValidateRefreshToken(raw string) (RefreshClaims, error) {
 		return j.publicKey, nil
 	})
 
-	if err != nil {
-		return RefreshClaims{}, customErrors.ErrInvalidToken
-	}
-
-	if !token.Valid {
+	if err != nil || !token.Valid {
 		return RefreshClaims{}, customErrors.ErrInvalidToken
 	}
 
 	claims, ok := token.Claims.(*RefreshClaims)
+
 	if !ok {
-		return RefreshClaims{}, customErrors.WrapInternal(errors.New("claims not RefreshClaims"), "ValidateRefreshToken")
+		return RefreshClaims{}, customErrors.WrapInternal(
+			errors.New("claims not RefreshClaims"), "ValidateRefreshToken")
+	}
+
+	if j.issuer != "" && claims.Issuer != j.issuer {
+		return RefreshClaims{}, customErrors.ErrInvalidToken
+	}
+
+	if j.audience != "" {
+		okAudi := false
+		for _, a := range claims.Audience {
+			if a == j.audience {
+				okAudi = true
+				break
+			}
+		}
+		if !okAudi {
+			return RefreshClaims{}, customErrors.ErrInvalidToken
+		}
 	}
 
 	return *claims, nil

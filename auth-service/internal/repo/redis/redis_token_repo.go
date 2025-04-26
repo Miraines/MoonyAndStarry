@@ -17,7 +17,7 @@ func NewRedisTokenRepo(client *redis.Client) *RedisTokenRepo {
 }
 
 func (r *RedisTokenRepo) Revoke(ctx context.Context, jti string, expiresAt time.Time) error {
-	err := r.client.Set(ctx, jti, "revoked:"+jti, expiresAt.Sub(time.Now())).Err()
+	err := r.client.Set(ctx, jti, "revoked:"+jti, time.Until(expiresAt)).Err()
 	if err != nil {
 		return err
 	}

@@ -18,7 +18,7 @@ func main() {
 	}
 
 	sourceURL := "file://scripts/db/migrations"
-	m, err := migrate.New(sourceURL, cfg.DataBaseUrl)
+	m, err := migrate.New(sourceURL, cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("Не удалось создать инстанс мигратора: %v", err)
 	}
@@ -62,7 +62,7 @@ func main() {
 	}
 	log.Println("Миграции успешно применены")
 
-	db, err := gorm.Open(postgres.Open(cfg.DataBaseUrl), &gorm.Config{})
+	db, err := gorm.Open(postgres.Open(cfg.DatabaseURL), &gorm.Config{})
 	if err != nil {
 		log.Fatalf("Не удалось подключиться к базе данных: %v", err)
 	}

@@ -18,6 +18,8 @@ type Config struct {
 	RedisPassword     string
 	RedisDB           int
 	PasswordPepper    string
+	Issuer            string
+	Audience          string
 }
 
 func Load() (*Config, error) {
@@ -38,6 +40,8 @@ func Load() (*Config, error) {
 		"REDIS_PASSWORD",
 		"REDIS_DB",
 		"PASSWORD_PEPPER",
+		"JWT_ISSUER",
+		"JWT_AUDIENCE",
 	} {
 		if err := viper.BindEnv(key); err != nil {
 			return nil, fmt.Errorf("bind env %s: %w", key, err)
@@ -60,6 +64,8 @@ func Load() (*Config, error) {
 		RedisPassword:     viper.GetString("REDIS_PASSWORD"),
 		RedisDB:           viper.GetInt("REDIS_DB"),
 		PasswordPepper:    viper.GetString("PASSWORD_PEPPER"),
+		Issuer:            viper.GetString("JWT_ISSUER"),
+		Audience:          viper.GetString("JWT_AUDIENCE"),
 	}
 
 	if cfg.DatabaseURL == "" {
