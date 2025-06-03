@@ -69,6 +69,19 @@ func (p *PostgresUserRepo) GetUserByUsername(ctx context.Context, username strin
 	return u, nil
 }
 
+func (p *PostgresUserRepo) GetUserByTelegramID(ctx context.Context, id int64) (model.User, error) {
+	var u model.User
+	res := p.db.WithContext(ctx).Where("telegram_id = ?", id).First(&u)
+	if errors.Is(res.Error, gorm.ErrRecordNotFound) {
+		return model.User{}, customErrors.ErrNotFound
+	}
+	if err := res.Error; err != nil {
+		return model.User{}, customErrors.WrapInternal(err, "GetUserByTelegramID")
+	}
+
+	return u, nil
+}
+
 func (p *PostgresUserRepo) UpdateUser(ctx context.Context, user model.User) error {
 	res := p.db.WithContext(ctx).Save(&user)
 	if err := res.Error; err != nil {

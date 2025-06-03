@@ -42,6 +42,14 @@ func (u *userRepoStub) DeleteUser(ctx context.Context, id uuid.UUID) error { ret
 func (u *userRepoStub) GetUserByUsername(ctx context.Context, username string) (model.User, error) {
 	return model.User{}, authErrors.ErrNotFound
 }
+func (u *userRepoStub) GetUserByTelegramID(ctx context.Context, id int64) (model.User, error) {
+	for _, v := range u.users {
+		if v.TelegramID == id {
+			return v, nil
+		}
+	}
+	return model.User{}, authErrors.ErrNotFound
+}
 
 type tokenRepoStub struct{ revoked map[string]bool }
 
@@ -66,7 +74,7 @@ func newSvc() (AuthService, *jwt.JwtUtilImpl, *tokenRepoStub) {
 	})
 	v := validator.New()
 	v.RegisterValidation("strongpwd", func(fl validator.FieldLevel) bool { return true })
-	return NewAuthService(ur, tr, util, &config.Config{PasswordPepper: "p"}, v), util, tr
+	return NewAuthService(ur, tr, util, &config.Config{PasswordPepper: "p", TelegramBotToken: "t"}, v), util, tr
 }
 
 func TestAuthService_RegisterLogin(t *testing.T) {

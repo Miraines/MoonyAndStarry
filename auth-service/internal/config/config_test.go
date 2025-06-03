@@ -15,6 +15,7 @@ func TestLoadFromEnv(t *testing.T) {
 	os.Setenv("REDIS_ADDRESS", "r")
 	os.Setenv("PASSWORD_PEPPER", "p")
 	os.Setenv("GRPC_ADDRESS", "addr")
+	os.Setenv("TELEGRAM_BOT_TOKEN", "t")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)

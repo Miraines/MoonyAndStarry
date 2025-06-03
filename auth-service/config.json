@@ -10,5 +10,6 @@
   "PASSWORD_PEPPER":     "Miraines",
   "JWT_ISSUER":          "auth-service",
   "JWT_AUDIENCE":        "moonandstarry-api",
-  "GRPC_ADDRESS":        ":50051"
+  "GRPC_ADDRESS":        ":50051",
+  "TELEGRAM_BOT_TOKEN":  ""
 }

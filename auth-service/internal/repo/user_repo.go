@@ -18,4 +18,6 @@ type UserRepo interface {
 	DeleteUser(ctx context.Context, id uuid.UUID) error
 
 	GetUserByUsername(ctx context.Context, username string) (model.User, error)
+
+	GetUserByTelegramID(ctx context.Context, id int64) (model.User, error)
 }

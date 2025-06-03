@@ -21,6 +21,9 @@ func (stubSvc) Register(ctx context.Context, d dto.RegisterDTO) (model.TokenPair
 func (stubSvc) Login(ctx context.Context, d dto.LoginDTO) (model.TokenPair, error) {
 	return model.TokenPair{AccessToken: "a", RefreshToken: "b", UserId: uuid.New()}, nil
 }
+func (stubSvc) TelegramAuth(ctx context.Context, d dto.TelegramAuthDTO) (model.TokenPair, error) {
+	return model.TokenPair{AccessToken: "tg", RefreshToken: "tg", UserId: uuid.New()}, nil
+}
 func (stubSvc) Validate(ctx context.Context, d dto.ValidateDTO) (model.User, error) {
 	return model.User{}, nil
 }
@@ -32,6 +35,14 @@ func (stubSvc) Logout(ctx context.Context, d dto.LogoutDTO) error { return nil }
 func TestHandler_Login(t *testing.T) {
 	h := &Handler{svc: stubSvc{}}
 	resp, err := h.Login(context.Background(), &authv1.LoginRequest{})
+	if err != nil || resp.AccessToken == "" {
+		t.Fatal("bad resp")
+	}
+}
+
+func TestHandler_TelegramAuth(t *testing.T) {
+	h := &Handler{svc: stubSvc{}}
+	resp, err := h.TelegramAuth(context.Background(), &authv1.TelegramAuthRequest{})
 	if err != nil || resp.AccessToken == "" {
 		t.Fatal("bad resp")
 	}
