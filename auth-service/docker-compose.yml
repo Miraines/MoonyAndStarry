@@ -6,10 +6,12 @@ services:
       POSTGRES_USER: appuser
       POSTGRES_PASSWORD: 3936570359az
       POSTGRES_DB: appdb
+    volumes:
+      - db-data:/var/lib/postgresql/data
     ports:
-      - "5433:5432"
+      - "25433:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U appuser"]
+      test: ["CMD-SHELL", "pg_isready -U appuser -d appdb"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -53,3 +55,5 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+volumes:
+  db-data:
