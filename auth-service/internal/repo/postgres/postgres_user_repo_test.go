@@ -7,8 +7,8 @@ import (
 
 	"github.com/Miraines/MoonyAndStarry/auth-service/internal/auth/errors"
 	"github.com/Miraines/MoonyAndStarry/auth-service/internal/auth/model"
+	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
