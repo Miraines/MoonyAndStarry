@@ -35,7 +35,10 @@ func main() {
 	defer zapLog.Sync()
 
 	// 2) GORM + Redis
-	db, _ := gorm.Open(postgres.Open(cfg.DatabaseURL), &gorm.Config{})
+	db, err := gorm.Open(postgres.Open(cfg.DatabaseURL), &gorm.Config{})
+	if err != nil {
+		zapLog.Fatal("failed to connect to database", zap.Error(err))
+	}
 	redisCli := redis.NewClient(&redis.Options{
 		Addr:     cfg.RedisAddress,
 		Password: cfg.RedisPassword,
@@ -63,7 +66,10 @@ func main() {
 
 	userRepo := myPostgresRepo.NewPostgresUserRepo(db)
 	tokenRepo := myRedisRepo.NewRedisTokenRepo(redisCli)
-	jwtUtil, _ := jwt.NewJWTUtil(cfg)
+	jwtUtil, err := jwt.NewJWTUtil(cfg)
+	if err != nil {
+		zapLog.Fatal("failed to init JWT util", zap.Error(err))
+	}
 	svc := service.NewAuthService(userRepo, tokenRepo, jwtUtil, cfg, validate)
 
 	// <<< ДОБАВЛЕНО: запуск gRPC-сервера в горутине
