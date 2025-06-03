@@ -24,6 +24,7 @@ import (
 	"github.com/Miraines/MoonyAndStarry/auth-service/internal/auth/jwt"
 	"github.com/Miraines/MoonyAndStarry/auth-service/internal/auth/service"
 	"github.com/Miraines/MoonyAndStarry/auth-service/internal/config"
+	"github.com/Miraines/MoonyAndStarry/auth-service/internal/migrate"
 	myPostgresRepo "github.com/Miraines/MoonyAndStarry/auth-service/internal/repo/postgres"
 	myRedisRepo "github.com/Miraines/MoonyAndStarry/auth-service/internal/repo/redis"
 
@@ -53,6 +54,9 @@ func main() {
 		zapLog.Fatal("db handle", zap.Error(err))
 	}
 	defer sqlDB.Close()
+	if err := migrate.Up(sqlDB); err != nil {
+		zapLog.Fatal("run migrations", zap.Error(err))
+	}
 
 	redisCli := redis.NewClient(&redis.Options{
 		Addr:     cfg.RedisAddress,
