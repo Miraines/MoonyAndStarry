@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -130,4 +131,68 @@ func TestAuthService_RefreshInvalidToken(t *testing.T) {
 	_, err := svc.Refresh(context.Background(), dto.RefreshDTO{RefreshToken: "bad"})
 	require.Error(t, err)
 	require.True(t, authErrors.IsInvalidToken(err))
+}
+
+type dupUserRepoStub struct{ *userRepoStub }
+
+func (dupUserRepoStub) CreateUser(ctx context.Context, m model.User) (uuid.UUID, error) {
+	return uuid.Nil, authErrors.ErrAlreadyExists
+}
+
+type errTokenRepoStub struct{}
+
+func (errTokenRepoStub) Revoke(ctx context.Context, jti string, exp time.Time) error {
+	return errors.New("err")
+}
+func (errTokenRepoStub) IsRevoked(ctx context.Context, jti string) (bool, error) {
+	return false, errors.New("err")
+}
+
+func TestAuthService_RegisterDuplicate(t *testing.T) {
+	util, _ := jwt.NewJWTUtil(&config.Config{JWTPrivateKeyPath: "../jwt/testdata/priv.pem", JWTPublicKeyPath: "../jwt/testdata/pub.pem", AccessTokenTTL: time.Minute, RefreshTokenTTL: time.Hour, Issuer: "t", Audience: "t"})
+	v := validator.New()
+	v.RegisterValidation("strongpwd", func(fl validator.FieldLevel) bool { return true })
+	svc := NewAuthService(dupUserRepoStub{&userRepoStub{}}, &tokenRepoStub{revoked: map[string]bool{}}, util, &config.Config{PasswordPepper: "p"}, v)
+	_, err := svc.Register(context.Background(), dto.RegisterDTO{Email: "e@example.com", Password: "Aa1aaaaa", Username: "user"})
+	require.Error(t, err)
+	require.True(t, authErrors.IsAlreadyExists(err))
+}
+
+func TestAuthService_LoginUserNotFound(t *testing.T) {
+	svc, _, _ := newSvc()
+	_, err := svc.Login(context.Background(), dto.LoginDTO{Email: "none@example.com", Password: "p"})
+	require.Error(t, err)
+	require.True(t, authErrors.IsInvalidCredentials(err))
+}
+
+func TestAuthService_RefreshRevoked(t *testing.T) {
+	svcIface, util, tr := newSvc()
+	svc := svcIface
+	ctx := context.Background()
+	pair, err := svc.Register(ctx, dto.RegisterDTO{Email: "r@example.com", Password: "Aa1aaaaa", Username: "user"})
+	require.NoError(t, err)
+	claims, _ := util.ValidateRefreshToken(pair.RefreshToken)
+	tr.revoked[claims.ID] = true
+	_, err = svc.Refresh(ctx, dto.RefreshDTO{RefreshToken: pair.RefreshToken})
+	require.Error(t, err)
+	require.True(t, authErrors.IsInvalidToken(err))
+}
+
+func TestAuthService_LogoutInvalid(t *testing.T) {
+	svc, _, _ := newSvc()
+	err := svc.Logout(context.Background(), dto.LogoutDTO{RefreshToken: "bad"})
+	require.Error(t, err)
+	require.True(t, authErrors.IsInvalidToken(err))
+}
+
+func TestAuthService_InternalErrors(t *testing.T) {
+	util, _ := jwt.NewJWTUtil(&config.Config{JWTPrivateKeyPath: "../jwt/testdata/priv.pem", JWTPublicKeyPath: "../jwt/testdata/pub.pem", AccessTokenTTL: time.Minute, RefreshTokenTTL: time.Hour, Issuer: "t", Audience: "t"})
+	v := validator.New()
+	v.RegisterValidation("strongpwd", func(fl validator.FieldLevel) bool { return true })
+	svc := NewAuthService(&userRepoStub{users: map[string]model.User{}}, errTokenRepoStub{}, util, &config.Config{PasswordPepper: "p"}, v)
+	pair, err := svc.Register(context.Background(), dto.RegisterDTO{Email: "i@example.com", Password: "Aa1aaaaa", Username: "user"})
+	require.NoError(t, err)
+	_, err = svc.Refresh(context.Background(), dto.RefreshDTO{RefreshToken: pair.RefreshToken})
+	require.Error(t, err)
+	require.True(t, authErrors.IsInternal(err))
 }
