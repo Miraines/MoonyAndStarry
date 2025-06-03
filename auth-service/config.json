@@ -11,5 +11,5 @@
   "JWT_ISSUER":          "auth-service",
   "JWT_AUDIENCE":        "moonandstarry-api",
   "GRPC_ADDRESS":        ":50051",
-  "TELEGRAM_BOT_TOKEN":  ""
+  "TELEGRAM_BOT_TOKEN":  "5182264348:AAFRwhTtcXba2d1OZn0lwv81cmr6ChfA3S0"
 }
