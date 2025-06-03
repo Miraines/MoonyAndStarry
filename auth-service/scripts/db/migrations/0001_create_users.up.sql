@@ -1,7 +1,10 @@
+-- Включаем расширение pgcrypto для работы с UUID, если есть права
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
+-- В некоторых окружениях функция gen_random_uuid недоступна,
+-- поэтому идентификаторы будем задавать из приложения
 CREATE TABLE users (
-                       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                       id UUID PRIMARY KEY,
                        email VARCHAR(255) NOT NULL UNIQUE,
                        username VARCHAR(100) NOT NULL UNIQUE,
                        password_hash VARCHAR(255) NOT NULL,
