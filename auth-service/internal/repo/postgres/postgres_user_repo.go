@@ -70,15 +70,12 @@ func (p *PostgresUserRepo) GetUserByUsername(ctx context.Context, username strin
 }
 
 func (p *PostgresUserRepo) UpdateUser(ctx context.Context, user model.User) error {
-	res := p.db.WithContext(ctx).Save(&user)
+	res := p.db.WithContext(ctx).Model(&model.User{}).Where("id = ?", user.ID).Updates(user)
 	if err := res.Error; err != nil {
 		return customErrors.WrapInternal(err, "UpdateUser")
 	}
-	if res.RowsAffected == 0 && user.ID != uuid.Nil {
-		exists := p.db.First(&model.User{}, "id = ?", user.ID).Error
-		if errors.Is(exists, gorm.ErrRecordNotFound) {
-			return customErrors.ErrNotFound
-		}
+	if res.RowsAffected == 0 {
+		return customErrors.ErrNotFound
 	}
 
 	return nil

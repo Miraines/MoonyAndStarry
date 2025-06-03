@@ -7,7 +7,7 @@ import (
 
 var (
 	ErrInvalidArgument    = errors.New("invalid argument")
-	ErrInternal           = errors.New("internal errors")
+	ErrInternal           = errors.New("internal error")
 	ErrNotFound           = errors.New("not found")
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrAlreadyExists      = errors.New("already exists")
