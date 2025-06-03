@@ -24,3 +24,32 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  auth:
+    build: .
+    working_dir: /app
+    environment:
+      DATABASE_URL: postgres://appuser:3936570359az@postgres:5432/appdb?sslmode=disable
+      JWT_PRIVATE_KEY_PATH: keys/jwt_private.pem
+      JWT_PUBLIC_KEY_PATH: keys/jwt_public.pem
+      ACCESS_TOKEN_TTL: 15m
+      REFRESH_TOKEN_TTL: 24h
+      REDIS_ADDRESS: redis:6379
+      REDIS_PASSWORD: ""
+      REDIS_DB: 0
+      PASSWORD_PEPPER: Miraines
+      JWT_ISSUER: auth-service
+      JWT_AUDIENCE: moonandstarry-api
+      GRPC_ADDRESS: :50051
+      TELEGRAM_BOT_TOKEN: ""
+    ports:
+      - "8080:8080"
+      - "50051:50051"
+    volumes:
+      - ./config.json:/app/config.json:ro
+      - ./keys:/app/keys:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
