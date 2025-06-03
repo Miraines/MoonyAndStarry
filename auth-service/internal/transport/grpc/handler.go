@@ -70,6 +70,28 @@ func (h *Handler) Login(ctx context.Context, req *authv1.LoginRequest) (*authv1.
 	}, nil
 }
 
+func (h *Handler) TelegramAuth(ctx context.Context, req *authv1.TelegramAuthRequest) (*authv1.LoginResponse, error) {
+	pair, err := h.svc.TelegramAuth(ctx, dto.TelegramAuthDTO{
+		ID:        req.Id,
+		FirstName: req.FirstName,
+		LastName:  req.LastName,
+		Username:  req.Username,
+		PhotoURL:  req.PhotoUrl,
+		AuthDate:  req.AuthDate,
+		Hash:      req.Hash,
+	})
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return &authv1.LoginResponse{
+		AccessToken:  pair.AccessToken,
+		RefreshToken: pair.RefreshToken,
+		AccessTtl:    int64(pair.AccessTTL.Seconds()),
+		RefreshTtl:   int64(pair.RefreshTTL.Seconds()),
+		UserId:       pair.UserId.String(),
+	}, nil
+}
+
 func (h *Handler) Validate(ctx context.Context, req *authv1.ValidateRequest) (*authv1.ValidateResponse, error) {
 
 	user, err := h.svc.Validate(ctx, dto.ValidateDTO{

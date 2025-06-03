@@ -137,6 +137,25 @@ func main() {
 		})
 	})
 
+	router.POST("/login/telegram", func(c *gin.Context) {
+		var body dto.TelegramAuthDTO
+		if err := c.ShouldBindJSON(&body); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		pair, err := svc.TelegramAuth(c.Request.Context(), body)
+		if err != nil {
+			handleError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"accessToken":  pair.AccessToken,
+			"refreshToken": pair.RefreshToken,
+			"expiresIn":    int(pair.AccessTTL.Seconds()),
+			"userId":       pair.UserId.String(),
+		})
+	})
+
 	router.POST("/refresh", func(c *gin.Context) {
 		var body dto.RefreshDTO
 		if err := c.ShouldBindJSON(&body); err != nil {

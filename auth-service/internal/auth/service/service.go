@@ -13,6 +13,7 @@ import (
 type AuthService interface {
 	Register(ctx context.Context, dto dto.RegisterDTO) (model.TokenPair, error)
 	Login(ctx context.Context, dto dto.LoginDTO) (model.TokenPair, error)
+	TelegramAuth(ctx context.Context, dto dto.TelegramAuthDTO) (model.TokenPair, error)
 	Validate(ctx context.Context, dto dto.ValidateDTO) (model.User, error)
 	Refresh(ctx context.Context, dto dto.RefreshDTO) (model.TokenPair, error)
 	Logout(ctx context.Context, dto dto.LogoutDTO) error

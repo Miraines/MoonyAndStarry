@@ -21,6 +21,7 @@ type Config struct {
 	Issuer            string
 	Audience          string
 	GRPCAddress       string
+	TelegramBotToken  string
 }
 
 func Load() (*Config, error) {
@@ -44,6 +45,7 @@ func Load() (*Config, error) {
 		"JWT_ISSUER",
 		"JWT_AUDIENCE",
 		"GRPC_ADDRESS",
+		"TELEGRAM_BOT_TOKEN",
 	} {
 		if err := viper.BindEnv(key); err != nil {
 			return nil, fmt.Errorf("bind env %s: %w", key, err)
@@ -69,6 +71,7 @@ func Load() (*Config, error) {
 		Issuer:            viper.GetString("JWT_ISSUER"),
 		Audience:          viper.GetString("JWT_AUDIENCE"),
 		GRPCAddress:       viper.GetString("GRPC_ADDRESS"),
+		TelegramBotToken:  viper.GetString("TELEGRAM_BOT_TOKEN"),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -94,6 +97,9 @@ func Load() (*Config, error) {
 	}
 	if cfg.GRPCAddress == "" {
 		return nil, fmt.Errorf("GRPC_ADDRESS не задан")
+	}
+	if cfg.TelegramBotToken == "" {
+		return nil, fmt.Errorf("TELEGRAM_BOT_TOKEN не задан")
 	}
 
 	return cfg, nil

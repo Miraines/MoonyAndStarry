@@ -6,12 +6,16 @@ import (
 )
 
 type User struct {
-	ID           uuid.UUID
-	Email        string
-	PasswordHash string
-	Username     string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID              uuid.UUID
+	Email           string
+	PasswordHash    string
+	Username        string
+	TelegramID      int64
+	FirstName       string
+	LastName        string
+	ProfilePhotoURL string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 type TokenPair struct {

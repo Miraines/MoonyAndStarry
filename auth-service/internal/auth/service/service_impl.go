@@ -3,16 +3,19 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
+	"time"
+
 	"github.com/Miraines/MoonyAndStarry/auth-service/internal/auth/dto"
 	customErrors "github.com/Miraines/MoonyAndStarry/auth-service/internal/auth/errors"
 	"github.com/Miraines/MoonyAndStarry/auth-service/internal/auth/jwt"
 	"github.com/Miraines/MoonyAndStarry/auth-service/internal/auth/model"
+	"github.com/Miraines/MoonyAndStarry/auth-service/internal/auth/telegram"
 	"github.com/Miraines/MoonyAndStarry/auth-service/internal/config"
 	"github.com/Miraines/MoonyAndStarry/auth-service/internal/repo"
 	"github.com/alexedwards/argon2id"
 	validate "github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
-	"time"
 )
 
 type authService struct {
@@ -100,6 +103,76 @@ func (a *authService) Login(ctx context.Context, dto dto.LoginDTO) (model.TokenP
 	refreshToken, rtExp, _, err := a.jwtUtil.GenerateRefreshToken(user.ID)
 	if err != nil {
 		return model.TokenPair{}, customErrors.WrapInternal(err, "Login")
+	}
+
+	now := time.Now()
+
+	return model.TokenPair{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		AccessTTL:    atExp.Sub(now),
+		RefreshTTL:   rtExp.Sub(now),
+		UserId:       user.ID,
+	}, nil
+}
+
+func (a *authService) TelegramAuth(ctx context.Context, dto dto.TelegramAuthDTO) (model.TokenPair, error) {
+	if err := a.v.Struct(dto); err != nil {
+		return model.TokenPair{}, customErrors.NewInvalidArgument(err.Error())
+	}
+	fields := map[string]string{
+		"auth_date":  fmt.Sprintf("%d", dto.AuthDate),
+		"first_name": dto.FirstName,
+		"id":         fmt.Sprintf("%d", dto.ID),
+		"last_name":  dto.LastName,
+		"username":   dto.Username,
+		"photo_url":  dto.PhotoURL,
+		"hash":       dto.Hash,
+	}
+	if !telegram.CheckAuth(fields, a.cfg.TelegramBotToken) {
+		return model.TokenPair{}, customErrors.ErrInvalidCredentials
+	}
+
+	user, err := a.userRepo.GetUserByTelegramID(ctx, dto.ID)
+	if err != nil && !errors.Is(err, customErrors.ErrNotFound) {
+		return model.TokenPair{}, customErrors.WrapInternal(err, "TelegramAuth")
+	}
+
+	if errors.Is(err, customErrors.ErrNotFound) {
+		email := fmt.Sprintf("tg%d@telegram.local", dto.ID)
+		passHash, _ := argon2id.CreateHash(uuid.NewString()+a.cfg.PasswordPepper, argon2id.DefaultParams)
+		user = model.User{
+			ID:              uuid.New(),
+			Email:           email,
+			PasswordHash:    passHash,
+			Username:        dto.Username,
+			TelegramID:      dto.ID,
+			FirstName:       dto.FirstName,
+			LastName:        dto.LastName,
+			ProfilePhotoURL: dto.PhotoURL,
+		}
+		if user.Username == "" {
+			user.Username = fmt.Sprintf("tg%d", dto.ID)
+		}
+		if _, err := a.userRepo.CreateUser(ctx, user); err != nil {
+			return model.TokenPair{}, err
+		}
+	} else {
+		user.Username = dto.Username
+		user.FirstName = dto.FirstName
+		user.LastName = dto.LastName
+		user.ProfilePhotoURL = dto.PhotoURL
+		_ = a.userRepo.UpdateUser(ctx, user)
+	}
+
+	accessToken, atExp, _, err := a.jwtUtil.GenerateAccessToken(user.ID, []string{"user"})
+	if err != nil {
+		return model.TokenPair{}, customErrors.WrapInternal(err, "TelegramAuth")
+	}
+
+	refreshToken, rtExp, _, err := a.jwtUtil.GenerateRefreshToken(user.ID)
+	if err != nil {
+		return model.TokenPair{}, customErrors.WrapInternal(err, "TelegramAuth")
 	}
 
 	now := time.Now()

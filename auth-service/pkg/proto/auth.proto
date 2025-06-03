@@ -9,6 +9,8 @@ service Auth {
 
   rpc Login(LoginRequest) returns (LoginResponse);
 
+  rpc TelegramAuth(TelegramAuthRequest) returns (LoginResponse);
+
   rpc Refresh(RefreshRequest) returns (RefreshResponse);
 
   rpc Validate(ValidateRequest) returns (ValidateResponse);
@@ -43,6 +45,16 @@ message LoginResponse {
   int64 access_ttl = 3;
   int64 refresh_ttl = 4;
   string user_id = 5;
+}
+
+message TelegramAuthRequest {
+  int64 id = 1;
+  string first_name = 2;
+  string last_name = 3;
+  string username = 4;
+  string photo_url = 5;
+  int64 auth_date = 6;
+  string hash = 7;
 }
 
 message RefreshRequest {

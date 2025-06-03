@@ -22,3 +22,13 @@ type ValidateDTO struct {
 type LogoutDTO struct {
 	RefreshToken string `json:"refresh_token" validate:"required"`
 }
+
+type TelegramAuthDTO struct {
+	ID        int64  `json:"id" validate:"required"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	Username  string `json:"username"`
+	PhotoURL  string `json:"photo_url"`
+	AuthDate  int64  `json:"auth_date" validate:"required"`
+	Hash      string `json:"hash" validate:"required"`
+}
