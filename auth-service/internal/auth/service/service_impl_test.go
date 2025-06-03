@@ -52,7 +52,7 @@ func (t *tokenRepoStub) IsRevoked(ctx context.Context, jti string) (bool, error)
 	return t.revoked[jti], nil
 }
 
-func newSvc() AuthService {
+func newSvc() (AuthService, *jwt.JwtUtilImpl, *tokenRepoStub) {
 	ur := &userRepoStub{users: make(map[string]model.User)}
 	tr := &tokenRepoStub{revoked: make(map[string]bool)}
 	util, _ := jwt.NewJWTUtil(&config.Config{
@@ -65,11 +65,11 @@ func newSvc() AuthService {
 	})
 	v := validator.New()
 	v.RegisterValidation("strongpwd", func(fl validator.FieldLevel) bool { return true })
-	return NewAuthService(ur, tr, util, &config.Config{PasswordPepper: "p"}, v)
+	return NewAuthService(ur, tr, util, &config.Config{PasswordPepper: "p"}, v), util, tr
 }
 
 func TestAuthService_RegisterLogin(t *testing.T) {
-	svc := newSvc()
+	svc, _, _ := newSvc()
 	ctx := context.Background()
 
 	pair, err := svc.Register(ctx, dto.RegisterDTO{Email: "e@example.com", Password: "Aa1aaaaa", Username: "user"})
@@ -79,4 +79,55 @@ func TestAuthService_RegisterLogin(t *testing.T) {
 	pair2, err := svc.Login(ctx, dto.LoginDTO{Email: "e@example.com", Password: "Aa1aaaaa"})
 	require.NoError(t, err)
 	require.NotEmpty(t, pair2.RefreshToken)
+}
+
+func TestAuthService_RegisterInvalid(t *testing.T) {
+	svc, _, _ := newSvc()
+	_, err := svc.Register(context.Background(), dto.RegisterDTO{})
+	require.Error(t, err)
+	require.True(t, authErrors.IsInvalidArgument(err))
+}
+
+func TestAuthService_LoginInvalidPassword(t *testing.T) {
+	svc, _, _ := newSvc()
+	ctx := context.Background()
+	_, err := svc.Register(ctx, dto.RegisterDTO{Email: "user@example.com", Password: "Aa1aaaaa", Username: "user"})
+	require.NoError(t, err)
+	_, err = svc.Login(ctx, dto.LoginDTO{Email: "user@example.com", Password: "bad"})
+	require.Error(t, err)
+	require.True(t, authErrors.IsInvalidCredentials(err))
+}
+
+func TestAuthService_ValidateAndRefresh(t *testing.T) {
+	svcIface, util, tr := newSvc()
+	svc := svcIface
+	ctx := context.Background()
+	pair, err := svc.Register(ctx, dto.RegisterDTO{Email: "v@example.com", Password: "Aa1aaaaa", Username: "user"})
+	require.NoError(t, err)
+	user, err := svc.Validate(ctx, dto.ValidateDTO{AccessToken: pair.AccessToken})
+	require.NoError(t, err)
+	require.Equal(t, pair.UserId, user.ID)
+	refreshed, err := svc.Refresh(ctx, dto.RefreshDTO{RefreshToken: pair.RefreshToken})
+	require.NoError(t, err)
+	// revoke old refresh token should mark revoked
+	claims, _ := util.ValidateRefreshToken(pair.RefreshToken)
+	revoked, _ := tr.IsRevoked(ctx, claims.ID)
+	require.True(t, revoked)
+	// logout should revoke token
+	err = svc.Logout(ctx, dto.LogoutDTO{RefreshToken: refreshed.RefreshToken})
+	require.NoError(t, err)
+}
+
+func TestAuthService_ValidateInvalidToken(t *testing.T) {
+	svc, _, _ := newSvc()
+	_, err := svc.Validate(context.Background(), dto.ValidateDTO{AccessToken: "bad"})
+	require.Error(t, err)
+	require.True(t, authErrors.IsInvalidToken(err))
+}
+
+func TestAuthService_RefreshInvalidToken(t *testing.T) {
+	svc, _, _ := newSvc()
+	_, err := svc.Refresh(context.Background(), dto.RefreshDTO{RefreshToken: "bad"})
+	require.Error(t, err)
+	require.True(t, authErrors.IsInvalidToken(err))
 }
