@@ -24,11 +24,11 @@ type LogoutDTO struct {
 }
 
 type TelegramAuthDTO struct {
-	ID        int64  `json:"id" validate:"required"`
-	FirstName string `json:"first_name"`
-	LastName  string `json:"last_name"`
-	Username  string `json:"username"`
-	PhotoURL  string `json:"photo_url"`
-	AuthDate  int64  `json:"auth_date" validate:"required"`
-	Hash      string `json:"hash" validate:"required"`
+	ID        int64  `form:"id"         json:"id"         validate:"required"`
+	FirstName string `form:"first_name" json:"first_name"`
+	LastName  string `form:"last_name"  json:"last_name"`
+	Username  string `form:"username"   json:"username"`
+	PhotoURL  string `form:"photo_url"  json:"photo_url"`
+	AuthDate  int64  `form:"auth_date"  json:"auth_date"  validate:"required"`
+	Hash      string `form:"hash"       json:"hash"       validate:"required"`
 }

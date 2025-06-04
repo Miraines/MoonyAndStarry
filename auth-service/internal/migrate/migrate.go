@@ -17,7 +17,7 @@ func Up(db *sql.DB) error {
 		return err
 	}
 
-	source, err := iofs.New(migrationsFS.FS, "scripts/db/migrations")
+	source, err := iofs.New(migrationsFS.FS, ".")
 	if err != nil {
 		return err
 	}

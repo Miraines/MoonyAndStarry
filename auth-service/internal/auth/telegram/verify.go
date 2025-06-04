@@ -5,31 +5,38 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"sort"
+	"strings"
 )
 
 // CheckAuth verifies telegram login hash according to official docs
-func CheckAuth(fields map[string]string, botToken string) bool {
-	hash := fields["hash"]
-	delete(fields, "hash")
+func CheckAuth(params map[string]string, hash string, token string) bool {
 
-	var keys []string
-	for k := range fields {
+	// 1. Алфавитная сортировка ключей
+	keys := make([]string, 0, len(params))
+	for k := range params {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 
-	var data string
+	// 2. Data-check-string c \\n между парами
+	var sb strings.Builder
 	for i, k := range keys {
-		if i > 0 {
-			data += "\n"
+		sb.WriteString(k)
+		sb.WriteString("=")
+		sb.WriteString(params[k])
+		if i != len(keys)-1 {
+			sb.WriteRune('\n')
 		}
-		data += k + "=" + fields[k]
 	}
+	data := sb.String()
 
-	secretKey := sha256.Sum256([]byte(botToken))
-	h := hmac.New(sha256.New, secretKey[:])
-	h.Write([]byte(data))
-	expected := hex.EncodeToString(h.Sum(nil))
+	// 3. Secret = SHA256(botToken)
+	secret := sha256.Sum256([]byte(token))
 
-	return expected == hash
+	// 4. HMAC-SHA256(data, secret)
+	mac := hmac.New(sha256.New, secret[:])
+	mac.Write([]byte(data))
+	expected := hex.EncodeToString(mac.Sum(nil))
+
+	return hmac.Equal([]byte(expected), []byte(hash))
 }

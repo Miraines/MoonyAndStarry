@@ -120,19 +120,19 @@ func (a *authService) TelegramAuth(ctx context.Context, dto dto.TelegramAuthDTO)
 	if err := a.v.Struct(dto); err != nil {
 		return model.TokenPair{}, customErrors.NewInvalidArgument(err.Error())
 	}
-	fields := map[string]string{
+	// ⚠️  Собираем map без hash
+	checkMap := map[string]string{
 		"auth_date":  fmt.Sprintf("%d", dto.AuthDate),
 		"first_name": dto.FirstName,
 		"id":         fmt.Sprintf("%d", dto.ID),
-		"last_name":  dto.LastName,
+		"last_name":  dto.LastName, // пустую строку оставляем!
 		"username":   dto.Username,
 		"photo_url":  dto.PhotoURL,
-		"hash":       dto.Hash,
-	}
-	if !telegram.CheckAuth(fields, a.cfg.TelegramBotToken) {
-		return model.TokenPair{}, customErrors.ErrInvalidCredentials
 	}
 
+	if !telegram.CheckAuth(checkMap, dto.Hash, a.cfg.TelegramBotToken) {
+		return model.TokenPair{}, customErrors.ErrInvalidCredentials
+	}
 	user, err := a.userRepo.GetUserByTelegramID(ctx, dto.ID)
 	if err != nil && !errors.Is(err, customErrors.ErrNotFound) {
 		return model.TokenPair{}, customErrors.WrapInternal(err, "TelegramAuth")

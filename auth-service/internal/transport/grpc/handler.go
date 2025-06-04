@@ -2,7 +2,9 @@ package grpc
 
 import (
 	"context"
-	"errors"
+	"github.com/pkg/errors"
+	"log"
+
 	"github.com/Miraines/MoonyAndStarry/auth-service/internal/auth/dto"
 	customErrors "github.com/Miraines/MoonyAndStarry/auth-service/internal/auth/errors"
 	"github.com/Miraines/MoonyAndStarry/auth-service/internal/auth/service"
@@ -30,14 +32,15 @@ func NewHandler(svc service.AuthService, db *gorm.DB, redisCli *redis.Client) *H
 }
 
 func (h *Handler) Register(ctx context.Context, req *authv1.RegisterRequest) (*authv1.RegisterResponse, error) {
+	log.Printf("gRPC Register called: email=%s, username=%s", req.Email, req.Username)
 
 	pair, err := h.svc.Register(ctx, dto.RegisterDTO{
 		Email:    req.Email,
 		Password: req.Password,
 		Username: req.Username,
 	})
-
 	if err != nil {
+		log.Printf("gRPC Register error: %v", err)
 		return nil, mapError(err)
 	}
 
@@ -51,13 +54,14 @@ func (h *Handler) Register(ctx context.Context, req *authv1.RegisterRequest) (*a
 }
 
 func (h *Handler) Login(ctx context.Context, req *authv1.LoginRequest) (*authv1.LoginResponse, error) {
+	log.Printf("gRPC Login called: email=%s", req.Email)
 
 	pair, err := h.svc.Login(ctx, dto.LoginDTO{
 		Email:    req.Email,
 		Password: req.Password,
 	})
-
 	if err != nil {
+		log.Printf("gRPC Login error: %v", err)
 		return nil, mapError(err)
 	}
 
@@ -71,6 +75,9 @@ func (h *Handler) Login(ctx context.Context, req *authv1.LoginRequest) (*authv1.
 }
 
 func (h *Handler) TelegramAuth(ctx context.Context, req *authv1.TelegramAuthRequest) (*authv1.LoginResponse, error) {
+	log.Printf("gRPC TelegramAuth called: id=%s first_name=%s last_name=%s username=%s photo_url=%s auth_date=%d hash=%s",
+		req.Id, req.FirstName, req.LastName, req.Username, req.PhotoUrl, req.AuthDate, req.Hash)
+
 	pair, err := h.svc.TelegramAuth(ctx, dto.TelegramAuthDTO{
 		ID:        req.Id,
 		FirstName: req.FirstName,
@@ -81,6 +88,7 @@ func (h *Handler) TelegramAuth(ctx context.Context, req *authv1.TelegramAuthRequ
 		Hash:      req.Hash,
 	})
 	if err != nil {
+		log.Printf("gRPC TelegramAuth error: %v", err)
 		return nil, mapError(err)
 	}
 	return &authv1.LoginResponse{
@@ -93,12 +101,13 @@ func (h *Handler) TelegramAuth(ctx context.Context, req *authv1.TelegramAuthRequ
 }
 
 func (h *Handler) Validate(ctx context.Context, req *authv1.ValidateRequest) (*authv1.ValidateResponse, error) {
+	log.Printf("gRPC Validate called: accessToken=%s", req.AccessToken)
 
 	user, err := h.svc.Validate(ctx, dto.ValidateDTO{
 		AccessToken: req.AccessToken,
 	})
-
 	if err != nil {
+		log.Printf("gRPC Validate error: %v", err)
 		return nil, mapError(err)
 	}
 
@@ -109,12 +118,13 @@ func (h *Handler) Validate(ctx context.Context, req *authv1.ValidateRequest) (*a
 }
 
 func (h *Handler) Refresh(ctx context.Context, req *authv1.RefreshRequest) (*authv1.RefreshResponse, error) {
+	log.Printf("gRPC Refresh called: refreshToken=%s", req.RefreshToken)
 
 	pair, err := h.svc.Refresh(ctx, dto.RefreshDTO{
 		RefreshToken: req.RefreshToken,
 	})
-
 	if err != nil {
+		log.Printf("gRPC Refresh error: %v", err)
 		return nil, mapError(err)
 	}
 
@@ -125,9 +135,11 @@ func (h *Handler) Refresh(ctx context.Context, req *authv1.RefreshRequest) (*aut
 }
 
 func (h *Handler) Logout(ctx context.Context, req *authv1.LogoutRequest) (*authv1.LogoutResponse, error) {
-	err := h.svc.Logout(ctx, dto.LogoutDTO{RefreshToken: req.RefreshToken})
+	log.Printf("gRPC Logout called: refreshToken=%s", req.RefreshToken)
 
+	err := h.svc.Logout(ctx, dto.LogoutDTO{RefreshToken: req.RefreshToken})
 	if err != nil {
+		log.Printf("gRPC Logout error: %v", err)
 		return nil, mapError(err)
 	}
 
@@ -135,11 +147,14 @@ func (h *Handler) Logout(ctx context.Context, req *authv1.LogoutRequest) (*authv
 }
 
 func (h *Handler) HealthCheck(ctx context.Context, req *authv1.HealthCheckRequest) (*authv1.HealthCheckResponse, error) {
+	log.Printf("gRPC HealthCheck called")
 
 	if err := h.db.WithContext(ctx).Exec("SELECT 1").Error; err != nil {
+		log.Printf("gRPC HealthCheck DB error: %v", err)
 		return &authv1.HealthCheckResponse{Status: authv1.HealthStatus_NOT_SERVING}, nil
 	}
 	if _, err := h.redisCli.Ping(ctx).Result(); err != nil {
+		log.Printf("gRPC HealthCheck Redis error: %v", err)
 		return &authv1.HealthCheckResponse{Status: authv1.HealthStatus_NOT_SERVING}, nil
 	}
 	return &authv1.HealthCheckResponse{
