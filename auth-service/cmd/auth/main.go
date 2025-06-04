@@ -1,8 +1,8 @@
-// cmd/auth/main.go
 package main
 
 import (
 	"context"
+	telegramloginwidget "github.com/LipsarHQ/go-telegram-login-widget"
 	"log"
 	"net/http"
 	"os"
@@ -34,7 +34,6 @@ import (
 )
 
 func main() {
-	// Инициализация логгера
 	zapLog, err := zap.NewProduction()
 	if err != nil {
 		panic("failed to init logger: " + err.Error())
@@ -46,7 +45,6 @@ func main() {
 		zapLog.Fatal("failed to load config", zap.Error(err))
 	}
 
-	// 2) GORM + Redis
 	db, err := gorm.Open(postgres.Open(cfg.DatabaseURL), &gorm.Config{})
 	if err != nil {
 		zapLog.Fatal("failed to connect to database", zap.Error(err))
@@ -67,7 +65,6 @@ func main() {
 	})
 	defer redisCli.Close()
 
-	// 3) Сервис и валидатор
 	validate := validator.New()
 	_ = validate.RegisterValidation("strongpwd", func(fl validator.FieldLevel) bool {
 		pwd := fl.Field().String()
@@ -94,7 +91,6 @@ func main() {
 	}
 	svc := service.NewAuthService(userRepo, tokenRepo, jwtUtil, cfg, validate)
 
-	// <<< Запуск gRPC-сервера в горутине с логами
 	go func() {
 		grpcHandler := myGrpc.NewHandler(svc, db, redisCli)
 		if err := server.StartGRPCServer(cfg, grpcHandler, zapLog); err != nil {
@@ -102,10 +98,8 @@ func main() {
 		}
 	}()
 
-	// 4) Gin-роутер для HTTP/REST
 	router := gin.Default()
 
-	// Логируем каждый HTTP-запрос
 	router.Use(func(c *gin.Context) {
 		start := time.Now()
 		c.Next()
@@ -179,10 +173,9 @@ func main() {
 	})
 
 	router.GET("/login/telegram", func(c *gin.Context) {
-		// 0) Лог исходного query-string
-		log.Printf("=== TelegramAuth GET, raw query: %s", c.Request.URL.RawQuery)
+		log.Printf("=== TelegramAuth BEGIN, raw query: %s", c.Request.URL.RawQuery)
 
-		// 1) Биндим query-строку в DTO
+		// 1) Биндим GET-параметры в DTO
 		var body dto.TelegramAuthDTO
 		if err := c.ShouldBindQuery(&body); err != nil {
 			log.Printf("BindQuery error: %v", err)
@@ -190,41 +183,40 @@ func main() {
 			return
 		}
 
-		// 2) Сохраняем ИМЕННО ТО значение initData, что пришло от Telegram.
-		// Gin уже один раз «раскодировал» параметр; если вам нужно
-		// передать вариант без дополнительного decode — забираем его напрямую:
-		if rawInit := c.Query("initData"); rawInit != "" {
-			body.InitData = rawInit
+		if initData := c.Query("init_data"); initData != "" {
+			body.InitData = initData
+			log.Printf("Detected init_data: %q", body.InitData)
 		}
 
-		// 3) Fallback: если пришёл только id – копируем его в TelegramID
-		if body.TelegramID == 0 && body.ID != 0 {
-			body.TelegramID = body.ID
+		if body.InitData == "" {
+			if body.TelegramID == 0 {
+				body.TelegramID = body.ID
+			}
+			log.Printf("Classic Login Widget: TelegramID = %d", body.TelegramID)
+
+			values := c.Request.URL.Query()
+
+			authData, err := telegramloginwidget.NewFromQuery(values)
+			if err != nil {
+				log.Printf("Telegram Login Widget NewFromQuery error: %v", err)
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid query parameters"})
+				return
+			}
+
+			if err := authData.Check(cfg.TelegramBotToken); err != nil {
+				log.Printf("Telegram Login Widget Check failed: %v", err)
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
+				return
+			}
 		}
 
-		log.Printf("DTO before service: %+v", body)
-
-		// 4) Вызов бизнес-логики (всё остальное делает сервис)
-		pair, err := svc.TelegramAuth(
-			c.Request.Context(),
-			dto.TelegramAuthDTO{
-				// всё как есть …
-				TelegramID: body.TelegramID,
-				Hash:       body.Hash,
-				AuthDate:   body.AuthDate,
-
-				// ➜ добавляем «сырой» query
-				InitData: c.Request.URL.RawQuery, // <--
-			},
-		)
-
+		pair, err := svc.TelegramAuth(c.Request.Context(), body)
 		if err != nil {
 			log.Printf("Service TelegramAuth error: %v", err)
 			handleError(c, err)
 			return
 		}
 
-		// 5) Ответ
 		c.JSON(http.StatusOK, gin.H{
 			"accessToken":  pair.AccessToken,
 			"refreshToken": pair.RefreshToken,
@@ -238,18 +230,15 @@ func main() {
 
 		var body dto.TelegramAuthDTO
 
-		// Определяем тип контента и биндим соответственно
 		contentType := c.GetHeader("Content-Type")
 
 		if contentType == "application/json" {
-			// Для JSON используем обычный Bind
 			if err := c.ShouldBindJSON(&body); err != nil {
 				log.Printf("JSON bind error: %v", err)
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}
 		} else {
-			// Для form-data и других типов
 			if err := c.ShouldBind(&body); err != nil {
 				log.Printf("Form bind error: %v", err)
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -260,7 +249,6 @@ func main() {
 		log.Printf("Bound data: InitData length=%d, TelegramID=%d, AuthDate=%d, Hash present=%t",
 			len(body.InitData), body.TelegramID, body.AuthDate, body.Hash != "")
 
-		// Минимальная валидация
 		hasInitData := body.InitData != ""
 		hasWebWidgetData := (body.TelegramID != 0 || body.ID != 0) && body.AuthDate != 0 && body.Hash != ""
 
@@ -269,7 +257,6 @@ func main() {
 			return
 		}
 
-		// Fallback для веб-виджета
 		if body.TelegramID == 0 && body.ID != 0 {
 			body.TelegramID = body.ID
 		}
@@ -277,7 +264,6 @@ func main() {
 		log.Printf("Final data: InitData=%t, TelegramID=%d, AuthDate=%d, Hash=%s",
 			body.InitData != "", body.TelegramID, body.AuthDate, body.Hash)
 
-		// Передаем данные в сервис БЕЗ ИЗМЕНЕНИЙ
 		pair, err := svc.TelegramAuth(c, body)
 		if err != nil {
 			log.Printf("Service TelegramAuth error: %v", err)
@@ -315,7 +301,6 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "time": time.Now().Unix()})
 	})
 
-	// 5) HTTP server with graceful shutdown
 	srv := &http.Server{Addr: ":8080", Handler: router}
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && !stdErr.Is(err, http.ErrServerClosed) {

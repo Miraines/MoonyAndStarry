@@ -3,6 +3,7 @@ module github.com/Miraines/MoonyAndStarry/auth-service
 go 1.24.1
 
 require (
+	github.com/LipsarHQ/go-telegram-login-widget v0.0.0-20231102112033-ec628cac556e
 	github.com/alexedwards/argon2id v1.0.0
 	github.com/alicebob/miniredis/v2 v2.34.0
 	github.com/gin-contrib/cors v1.7.5

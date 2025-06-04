@@ -23,27 +23,21 @@ type LogoutDTO struct {
 	RefreshToken string `json:"refresh_token" validate:"required"`
 }
 
-// internal/auth/dto/telegram.go
 type TelegramAuthDTO struct {
-	// ---------- Веб-виджет ----------
-	ID        int64  `form:"id"`         // Telegram user id
-	FirstName string `form:"first_name"` // имя
-	LastName  string `form:"last_name"`  // фамилия (может быть пустым)
-	Username  string `form:"username"`   // username
-	PhotoURL  string `form:"photo_url"`  // ссылка на фото
+	ID        int64  `form:"id"`
+	FirstName string `form:"first_name"`
+	LastName  string `form:"last_name"`
+	Username  string `form:"username"`
+	PhotoURL  string `form:"photo_url"`
 
-	// ---------- Mini App ----------
-	User    string `form:"user"`     // JSON-строка с данными пользователя
-	QueryID string `form:"query_id"` // идентификатор сессии Mini App
+	User    string `form:"user"`
+	QueryID string `form:"query_id"`
 
-	// Иногда Mini App (Web-App) присылает всё одной строкой initData.
-	InitData string `form:"init_data" json:"init_data"` // URL-encoded "auth_date=...&user=...&hash=..."
+	InitData string `form:"init_data" json:"init_data"`
 
-	// ---------- Общие обязательные ----------
-	// ⚠️   НЕ ставим binding:"required" — проверим вручную в хэндлере
-	AuthDate int64  `form:"auth_date"` // Unix-timestamp
-	Hash     string `form:"hash"`      // HMAC-SHA256 hex
+	AuthDate int64  `form:"auth_date"`
+	Hash     string `form:"hash"`
 
-	// ---------- Внутреннее ----------
-	TelegramID int64 `form:"-"` // заполняем вручную после парсинга
+	TelegramID  int64
+	RawWebQuery string
 }

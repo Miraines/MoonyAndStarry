@@ -128,15 +128,13 @@ func (a *authService) TelegramAuth(
 	in dto.TelegramAuthDTO,
 ) (model.TokenPair, error) {
 
-	// ――― 1.  init_data (Mini-App / WebApp) ―――
-	if in.InitData != "" && strings.Contains(in.InitData, "hash=") {
-		// считаем, что это Web-widget и сразу ValidateThirdParty
+	if in.InitData != "" {
 		botID, _ := strconv.ParseInt(strings.Split(a.cfg.TelegramBotToken, ":")[0], 10, 64)
+
 		if err := initdata.ValidateThirdParty(in.InitData, botID, initDataTTL); err != nil {
 			return model.TokenPair{}, customErrors.ErrInvalidCredentials
 		}
 
-		// 1.2 Разбираем поля
 		idata, err := initdata.Parse(in.InitData)
 		if err != nil {
 			return model.TokenPair{}, customErrors.NewInvalidArgument("malformed init_data")
@@ -152,23 +150,6 @@ func (a *authService) TelegramAuth(
 		)
 	}
 
-	// ――― 2.  Классический Web-виджет (id + auth_date + hash) ―――
-	if in.TelegramID == 0 || in.AuthDate == 0 || in.Hash == "" {
-		return model.TokenPair{}, customErrors.NewInvalidArgument("missing required telegram auth data")
-	}
-
-	// 2.1 Строим «сырой» query-string в порядке полей, как требует Telegram
-	raw := buildRawQuery(in) // см. helper ниже
-
-	// 2.2 Получаем bot-id (число до «:» в token)
-	botID, _ := strconv.ParseInt(strings.Split(a.cfg.TelegramBotToken, ":")[0], 10, 64)
-
-	// 2.3 ValidateThirdParty проверит хэш (без поля signature) и TTL
-	if err := initdata.ValidateThirdParty(raw, botID, initDataTTL); err != nil {
-		return model.TokenPair{}, customErrors.ErrInvalidCredentials
-	}
-
-	// 2.4 Всё ок — заводим / обновляем пользователя
 	return a.upsertUserAndIssueTokens(
 		ctx,
 		in.TelegramID,
@@ -179,10 +160,6 @@ func (a *authService) TelegramAuth(
 	)
 }
 
-// ────────────────────────────────────────────────────────────────────────────────
-// HELPERS
-
-// upsertUserAndIssueTokens сохраняет/обновляет пользователя и выдаёт пару токенов
 func (a *authService) upsertUserAndIssueTokens(
 	ctx context.Context,
 	tgID int64,
@@ -191,11 +168,12 @@ func (a *authService) upsertUserAndIssueTokens(
 
 	user, err := a.userRepo.GetUserByTelegramID(ctx, tgID)
 	switch {
-	case err == nil: // найден — можно обновить
+	case err == nil:
 		if updateUser(&user, username, firstName, lastName, photoURL) {
-			_ = a.userRepo.UpdateUser(ctx, user) // best-effort
+			_ = a.userRepo.UpdateUser(ctx, user)
 		}
-	case errors.Is(err, customErrors.ErrNotFound): // не найден — создаём
+
+	case errors.Is(err, customErrors.ErrNotFound):
 		email := fmt.Sprintf("tg%d@telegram.local", tgID)
 		passHash, _ := argon2id.CreateHash(uuid.NewString()+a.cfg.PasswordPepper, argon2id.DefaultParams)
 
@@ -209,21 +187,21 @@ func (a *authService) upsertUserAndIssueTokens(
 			LastName:        lastName,
 			ProfilePhotoURL: photoURL,
 		}
-		if _, err = a.userRepo.CreateUser(ctx, user); err != nil {
+		if _, err := a.userRepo.CreateUser(ctx, user); err != nil {
 			return model.TokenPair{}, customErrors.WrapInternal(err, "CreateUser")
 		}
-	default: // другая ошибка
+
+	default:
 		return model.TokenPair{}, customErrors.WrapInternal(err, "GetUserByTelegramID")
 	}
 
-	// JWT-пара
 	at, atExp, _, err := a.jwtUtil.GenerateAccessToken(user.ID, []string{"user"})
 	if err != nil {
-		return model.TokenPair{}, customErrors.WrapInternal(err, "GenAccess")
+		return model.TokenPair{}, customErrors.WrapInternal(err, "GenerateAccessToken")
 	}
 	rt, rtExp, _, err := a.jwtUtil.GenerateRefreshToken(user.ID)
 	if err != nil {
-		return model.TokenPair{}, customErrors.WrapInternal(err, "GenRefresh")
+		return model.TokenPair{}, customErrors.WrapInternal(err, "GenerateRefreshToken")
 	}
 
 	now := time.Now()
@@ -234,27 +212,6 @@ func (a *authService) upsertUserAndIssueTokens(
 		RefreshTTL:   rtExp.Sub(now),
 		UserId:       user.ID,
 	}, nil
-}
-
-// buildRawQuery формирует строку вида "auth_date=…&id=…&username=…&hash=…"
-func buildRawQuery(in dto.TelegramAuthDTO) string {
-	q := make([]string, 0, 5)
-	q = append(q, "auth_date="+strconv.FormatInt(in.AuthDate, 10))
-	q = append(q, "id="+strconv.FormatInt(in.TelegramID, 10))
-	if in.Username != "" {
-		q = append(q, "username="+in.Username)
-	}
-	if in.FirstName != "" {
-		q = append(q, "first_name="+in.FirstName)
-	}
-	if in.LastName != "" {
-		q = append(q, "last_name="+in.LastName)
-	}
-	if in.PhotoURL != "" {
-		q = append(q, "photo_url="+in.PhotoURL)
-	}
-	q = append(q, "hash="+in.Hash)
-	return strings.Join(q, "&")
 }
 
 func updateUser(u *model.User, username, fn, ln, photo string) (changed bool) {
@@ -268,7 +225,8 @@ func updateUser(u *model.User, username, fn, ln, photo string) (changed bool) {
 		u.LastName, changed = ln, true
 	}
 	if photo != "" && u.ProfilePhotoURL != photo {
-		u.ProfilePhotoURL, changed = photo, true
+		u.ProfilePhotoURL = photo
+		changed = true
 	}
 	return
 }
