@@ -203,12 +203,13 @@ func (a *authService) TelegramAuth(ctx context.Context, dto dto.TelegramAuthDTO)
 				telegramID, firstName, username)
 		}
 
-		// Формируем checkMap из всех параметров кроме hash
+		// Формируем checkMap из всех параметров кроме hash и signature
 		checkMap = make(map[string]string)
 		for key, values := range parsed {
-			if key != "hash" && len(values) > 0 {
-				checkMap[key] = values[0]
+			if (key == "hash" || key == "signature") || len(values) == 0 {
+				continue
 			}
+			checkMap[key] = values[0]
 		}
 
 		// Устанавливаем hash для проверки
@@ -253,7 +254,13 @@ func (a *authService) TelegramAuth(ctx context.Context, dto dto.TelegramAuthDTO)
 
 	// 3. Проверяем подпись
 	log.Printf("DEBUG: Checking auth with hash: %s, checkMap: %+v", dto.Hash, checkMap)
-	if !telegram.CheckAuth(checkMap, dto.Hash, a.cfg.TelegramBotToken) {
+	valid := false
+	if dto.InitData != "" {
+		valid = telegram.CheckWebAppAuth(checkMap, dto.Hash, a.cfg.TelegramBotToken)
+	} else {
+		valid = telegram.CheckAuth(checkMap, dto.Hash, a.cfg.TelegramBotToken)
+	}
+	if !valid {
 		log.Printf("DEBUG: CheckAuth failed!")
 		log.Printf("CheckMap: %+v", checkMap)
 		log.Printf("Hash: %s", dto.Hash)
