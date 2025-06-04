@@ -3,13 +3,10 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 	"unicode"
@@ -182,145 +179,52 @@ func main() {
 	})
 
 	router.GET("/login/telegram", func(c *gin.Context) {
-		// 0) Логируем raw-query для дебага
-		log.Printf("=== TelegramAuth BEGIN, raw query: %s", c.Request.URL.RawQuery)
+		// 0) Лог исходного query-string
+		log.Printf("=== TelegramAuth GET, raw query: %s", c.Request.URL.RawQuery)
 
-		// 1) Биндим query-строку в структуру
+		// 1) Биндим query-строку в DTO
 		var body dto.TelegramAuthDTO
 		if err := c.ShouldBindQuery(&body); err != nil {
 			log.Printf("BindQuery error: %v", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		// Логируем, что получилось после биндинга
-		log.Printf("After BindQuery: ID=%d, InitData=%q, User=%q, AuthDate=%d, Hash=%q",
-			body.ID, body.InitData, body.User, body.AuthDate, body.Hash)
 
-		// 2) Если пришёл init_data (Web App), пробуем раскодировать и распарсить
-		if body.InitData != "" {
-			decodedInit, err := url.QueryUnescape(body.InitData)
-			if err != nil {
-				log.Printf("Failed to QueryUnescape init_data: %v", err)
-				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid init_data encoding"})
-				return
-			}
-			parsed, err := url.ParseQuery(decodedInit)
-			if err != nil {
-				log.Printf("Failed to ParseQuery init_data: %v", err)
-				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid init_data format"})
-				return
-			}
-			// Если в init_data прямо лежат поля auth_date, hash, id, first_name и т.д.
-			if authDateStr := parsed.Get("auth_date"); authDateStr != "" {
-				body.AuthDate, _ = strconv.ParseInt(authDateStr, 10, 64)
-			}
-			if hash := parsed.Get("hash"); hash != "" {
-				body.Hash = hash
-			}
-			if userJSON := parsed.Get("user"); body.User == "" && userJSON != "" {
-				body.User = userJSON
-			}
-			if queryID := parsed.Get("query_id"); body.QueryID == "" && queryID != "" {
-				body.QueryID = queryID
-			}
-			// В случае Web-widget: id, first_name, last_name, username, photo_url
-			if body.ID == 0 {
-				if idStr := parsed.Get("id"); idStr != "" {
-					body.ID, _ = strconv.ParseInt(idStr, 10, 64)
-				}
-			}
-			if body.FirstName == "" {
-				body.FirstName = parsed.Get("first_name")
-			}
-			if body.LastName == "" {
-				body.LastName = parsed.Get("last_name")
-			}
-			if body.Username == "" {
-				body.Username = parsed.Get("username")
-			}
-			if body.PhotoURL == "" {
-				body.PhotoURL = parsed.Get("photo_url")
-			}
-			log.Printf("After parsing init_data: ID=%d, User=%q, AuthDate=%d, Hash=%q", body.ID, body.User, body.AuthDate, body.Hash)
+		// 2) Сохраняем ИМЕННО ТО значение initData, что пришло от Telegram.
+		// Gin уже один раз «раскодировал» параметр; если вам нужно
+		// передать вариант без дополнительного decode — забираем его напрямую:
+		if rawInit := c.Query("initData"); rawInit != "" {
+			body.InitData = rawInit
 		}
 
-		// 3) Если пришёл user (Mini-App), пробуем распарсить JSON
-		if body.User != "" {
-			decodedUser, err := url.QueryUnescape(body.User)
-			if err != nil {
-				log.Printf("Failed to QueryUnescape user JSON: %v", err)
-				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user JSON encoding"})
-				return
-			}
-			var u struct {
-				ID        int64  `json:"id"`
-				FirstName string `json:"first_name"`
-				LastName  string `json:"last_name"`
-				Username  string `json:"username"`
-				PhotoURL  string `json:"photo_url"`
-			}
-			if err := json.Unmarshal([]byte(decodedUser), &u); err != nil {
-				log.Printf("json.Unmarshal user JSON error: %v (raw: %q)", err, decodedUser)
-				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user JSON"})
-				return
-			}
-			// Заполняем DTO полями из JSON
-			body.TelegramID = u.ID
-			if body.FirstName == "" {
-				body.FirstName = u.FirstName
-			}
-			if body.LastName == "" {
-				body.LastName = u.LastName
-			}
-			if body.Username == "" {
-				body.Username = u.Username
-			}
-			if body.PhotoURL == "" {
-				body.PhotoURL = u.PhotoURL
-			}
-			log.Printf("After parsing user JSON: TelegramID=%d, FirstName=%s, Username=%s", body.TelegramID, body.FirstName, body.Username)
-		}
-
-		// 4) Для классического Web-виджета: если TelegramID всё ещё не установлен, берём его из ID
-		if body.TelegramID == 0 {
+		// 3) Fallback: если пришёл только id – копируем его в TelegramID
+		if body.TelegramID == 0 && body.ID != 0 {
 			body.TelegramID = body.ID
 		}
-		log.Printf("Final before validation: TelegramID=%d, AuthDate=%d, Hash=%q",
-			body.TelegramID, body.AuthDate, body.Hash)
 
-		// 5) Ручная проверка обязательных полей
-		switch {
-		case body.TelegramID == 0:
-			c.JSON(http.StatusBadRequest, gin.H{"error": "missing id or user"})
-			return
-		case body.AuthDate == 0:
-			c.JSON(http.StatusBadRequest, gin.H{"error": "missing auth_date"})
-			return
-		case body.Hash == "":
-			c.JSON(http.StatusBadRequest, gin.H{"error": "missing hash"})
-			return
-		}
+		log.Printf("DTO before service: %+v", body)
 
-		// 6) Бизнес-логика: проверка подписи и создание/получение пользователя
-		pair, err := svc.TelegramAuth(c, dto.TelegramAuthDTO{
-			ID:         body.TelegramID,
-			FirstName:  body.FirstName,
-			LastName:   body.LastName,
-			Username:   body.Username,
-			PhotoURL:   body.PhotoURL,
-			User:       body.User,
-			QueryID:    body.QueryID,
-			AuthDate:   body.AuthDate,
-			Hash:       body.Hash,
-			TelegramID: body.TelegramID,
-		})
+		// 4) Вызов бизнес-логики (всё остальное делает сервис)
+		pair, err := svc.TelegramAuth(
+			c.Request.Context(),
+			dto.TelegramAuthDTO{
+				// всё как есть …
+				TelegramID: body.TelegramID,
+				Hash:       body.Hash,
+				AuthDate:   body.AuthDate,
+
+				// ➜ добавляем «сырой» query
+				InitData: c.Request.URL.RawQuery, // <--
+			},
+		)
+
 		if err != nil {
 			log.Printf("Service TelegramAuth error: %v", err)
 			handleError(c, err)
 			return
 		}
 
-		// 7) Возвращаем токены
+		// 5) Ответ
 		c.JSON(http.StatusOK, gin.H{
 			"accessToken":  pair.AccessToken,
 			"refreshToken": pair.RefreshToken,
@@ -330,38 +234,33 @@ func main() {
 	})
 
 	router.POST("/login/telegram", func(c *gin.Context) {
-		log.Printf("=== TelegramAuth POST BEGIN, content-type: %s, len=%d",
-			c.GetHeader("Content-Type"), c.Request.ContentLength)
+		log.Printf("=== TelegramAuth POST BEGIN, content-type: %s", c.GetHeader("Content-Type"))
 
-		// 1) Получаем RAW данные без автоматического декодирования
 		var body dto.TelegramAuthDTO
 
-		// Для form-data и query параметров используем ShouldBindQuery + ShouldBindWith
-		if err := c.ShouldBindQuery(&body); err != nil {
-			log.Printf("Query bind error: %v", err)
-		}
+		// Определяем тип контента и биндим соответственно
+		contentType := c.GetHeader("Content-Type")
 
-		// Для JSON используем обычный Bind
-		if c.GetHeader("Content-Type") == "application/json" {
+		if contentType == "application/json" {
+			// Для JSON используем обычный Bind
 			if err := c.ShouldBindJSON(&body); err != nil {
 				log.Printf("JSON bind error: %v", err)
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}
 		} else {
-			// Для form-data получаем init_data вручную чтобы избежать автодекодирования
-			if initData := c.PostForm("init_data"); initData != "" {
-				body.InitData = initData // Сохраняем как есть, без декодирования
-			}
-			if initData := c.Query("init_data"); initData != "" {
-				body.InitData = initData // Сохраняем как есть, без декодирования
+			// Для form-data и других типов
+			if err := c.ShouldBind(&body); err != nil {
+				log.Printf("Form bind error: %v", err)
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
 			}
 		}
 
-		log.Printf("Raw bound data: InitData length=%d, TelegramID=%d, AuthDate=%d, Hash=%q",
-			len(body.InitData), body.TelegramID, body.AuthDate, body.Hash)
+		log.Printf("Bound data: InitData length=%d, TelegramID=%d, AuthDate=%d, Hash present=%t",
+			len(body.InitData), body.TelegramID, body.AuthDate, body.Hash != "")
 
-		// 2) Минимальная валидация - НЕ трогаем данные, только проверяем наличие
+		// Минимальная валидация
 		hasInitData := body.InitData != ""
 		hasWebWidgetData := (body.TelegramID != 0 || body.ID != 0) && body.AuthDate != 0 && body.Hash != ""
 
@@ -370,46 +269,22 @@ func main() {
 			return
 		}
 
-		// Fallback для веб-виджета (если нужно)
-		if !hasInitData && body.TelegramID == 0 && body.ID != 0 {
+		// Fallback для веб-виджета
+		if body.TelegramID == 0 && body.ID != 0 {
 			body.TelegramID = body.ID
 		}
 
-		// 3) Передаем данные в сервис БЕЗ ИЗМЕНЕНИЙ
-		serviceDTO := dto.TelegramAuthDTO{
-			// Основные поля - как есть
-			InitData:   body.InitData, // RAW данные без декодирования!
-			TelegramID: body.TelegramID,
-			AuthDate:   body.AuthDate,
-			Hash:       body.Hash,
+		log.Printf("Final data: InitData=%t, TelegramID=%d, AuthDate=%d, Hash=%s",
+			body.InitData != "", body.TelegramID, body.AuthDate, body.Hash)
 
-			// Дополнительные поля
-			ID:        body.ID,
-			FirstName: body.FirstName,
-			LastName:  body.LastName,
-			Username:  body.Username,
-			PhotoURL:  body.PhotoURL,
-			User:      body.User,
-			QueryID:   body.QueryID,
-		}
-
-		log.Printf("=== DEBUG: Sending RAW data to service ===")
-		log.Printf("InitData (first 100 chars): %.100s", serviceDTO.InitData)
-		log.Printf("InitData length: %d", len(serviceDTO.InitData))
-		log.Printf("TelegramID: %d", serviceDTO.TelegramID)
-		log.Printf("AuthDate: %d", serviceDTO.AuthDate)
-		log.Printf("Hash: %s", serviceDTO.Hash)
-		log.Printf("=============================================")
-
-		// 4) Вызываем сервис
-		pair, err := svc.TelegramAuth(c, serviceDTO)
+		// Передаем данные в сервис БЕЗ ИЗМЕНЕНИЙ
+		pair, err := svc.TelegramAuth(c, body)
 		if err != nil {
 			log.Printf("Service TelegramAuth error: %v", err)
 			handleError(c, err)
 			return
 		}
 
-		// 5) Возвращаем результат
 		c.JSON(http.StatusOK, gin.H{
 			"accessToken":  pair.AccessToken,
 			"refreshToken": pair.RefreshToken,

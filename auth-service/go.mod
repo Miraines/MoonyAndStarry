@@ -19,6 +19,7 @@ require (
 	github.com/redis/go-redis/v9 v9.7.3
 	github.com/spf13/viper v1.20.1
 	github.com/stretchr/testify v1.10.0
+	github.com/telegram-mini-apps/init-data-golang v1.5.0
 	go.uber.org/zap v1.18.1
 	golang.org/x/time v0.8.0
 	google.golang.org/grpc v1.72.0

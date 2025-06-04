@@ -2,24 +2,27 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
-	"net/url"
+	initdata "github.com/telegram-mini-apps/init-data-golang"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Miraines/MoonyAndStarry/auth-service/internal/auth/dto"
 	customErrors "github.com/Miraines/MoonyAndStarry/auth-service/internal/auth/errors"
 	"github.com/Miraines/MoonyAndStarry/auth-service/internal/auth/jwt"
 	"github.com/Miraines/MoonyAndStarry/auth-service/internal/auth/model"
-	"github.com/Miraines/MoonyAndStarry/auth-service/internal/auth/telegram"
 	"github.com/Miraines/MoonyAndStarry/auth-service/internal/config"
 	"github.com/Miraines/MoonyAndStarry/auth-service/internal/repo"
 	"github.com/alexedwards/argon2id"
 	validate "github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
+)
+
+const (
+	// Время жизни init_data (24 часа)
+	initDataTTL = 24 * time.Hour
 )
 
 type authService struct {
@@ -120,252 +123,154 @@ func (a *authService) Login(ctx context.Context, dto dto.LoginDTO) (model.TokenP
 	}, nil
 }
 
-func (a *authService) TelegramAuth(ctx context.Context, dto dto.TelegramAuthDTO) (model.TokenPair, error) {
-	// 1. Базовая проверка
-	if dto.TelegramID == 0 && dto.InitData == "" {
-		return model.TokenPair{}, customErrors.NewInvalidArgument("missing Telegram ID or init_data")
-	}
+func (a *authService) TelegramAuth(
+	ctx context.Context,
+	in dto.TelegramAuthDTO,
+) (model.TokenPair, error) {
 
-	// 2. Формируем данные для проверки подписи
-	var checkMap map[string]string
-	var telegramID int64
-	var firstName, lastName, username, photoURL string
+	// ――― 1.  init_data (Mini-App / WebApp) ―――
+	if in.InitData != "" && strings.Contains(in.InitData, "hash=") {
+		// считаем, что это Web-widget и сразу ValidateThirdParty
+		botID, _ := strconv.ParseInt(strings.Split(a.cfg.TelegramBotToken, ":")[0], 10, 64)
+		if err := initdata.ValidateThirdParty(in.InitData, botID, initDataTTL); err != nil {
+			return model.TokenPair{}, customErrors.ErrInvalidCredentials
+		}
 
-	if dto.InitData != "" {
-		log.Printf("DEBUG: Processing InitData, length=%d", len(dto.InitData))
-		log.Printf("DEBUG: InitData first 200 chars: %.200s", dto.InitData)
-
-		// ЕДИНСТВЕННОЕ место где делаем декодирование!
-		// Сначала пробуем парсить как есть
-		parsed, err := url.ParseQuery(dto.InitData)
+		// 1.2 Разбираем поля
+		idata, err := initdata.Parse(in.InitData)
 		if err != nil {
-			log.Printf("DEBUG: Direct parse failed, trying URL decode: %v", err)
-			// Если не получилось - пробуем декодировать
-			decoded, decodeErr := url.QueryUnescape(dto.InitData)
-			if decodeErr != nil {
-				log.Printf("DEBUG: URL decode failed: %v", decodeErr)
-				return model.TokenPair{}, customErrors.NewInvalidArgument("invalid init_data format")
-			}
-			log.Printf("DEBUG: Decoded InitData: %.200s", decoded)
-
-			parsed, err = url.ParseQuery(decoded)
-			if err != nil {
-				log.Printf("DEBUG: Parse after decode failed: %v", err)
-				return model.TokenPair{}, customErrors.NewInvalidArgument("invalid init_data format")
-			}
+			return model.TokenPair{}, customErrors.NewInvalidArgument("malformed init_data")
 		}
 
-		log.Printf("DEBUG: Successfully parsed InitData, keys: %v", getKeys(parsed))
-
-		// Извлекаем auth_date и hash
-		authDateStr := parsed.Get("auth_date")
-		hash := parsed.Get("hash")
-
-		if authDateStr == "" || hash == "" {
-			log.Printf("DEBUG: Missing auth_date(%s) or hash(%s)", authDateStr, hash)
-			return model.TokenPair{}, customErrors.NewInvalidArgument("missing auth_date or hash in init_data")
-		}
-
-		authDate, err := strconv.ParseInt(authDateStr, 10, 64)
-		if err != nil {
-			return model.TokenPair{}, customErrors.NewInvalidArgument("invalid auth_date format")
-		}
-
-		// Проверка времени
-		if err := validateAuthDate(authDate); err != nil {
-			return model.TokenPair{}, err
-		}
-
-		// Извлекаем пользовательские данные
-		if userJSON := parsed.Get("user"); userJSON != "" {
-			log.Printf("DEBUG: Found user JSON: %s", userJSON)
-			var userData struct {
-				ID           int64  `json:"id"`
-				FirstName    string `json:"first_name"`
-				LastName     string `json:"last_name"`
-				Username     string `json:"username"`
-				LanguageCode string `json:"language_code"`
-				PhotoURL     string `json:"photo_url"`
-			}
-
-			if err := json.Unmarshal([]byte(userJSON), &userData); err != nil {
-				log.Printf("DEBUG: Failed to unmarshal user JSON: %v", err)
-				return model.TokenPair{}, customErrors.NewInvalidArgument("invalid user data in init_data")
-			}
-
-			telegramID = userData.ID
-			firstName = userData.FirstName
-			lastName = userData.LastName
-			username = userData.Username
-			photoURL = userData.PhotoURL
-
-			log.Printf("DEBUG: Extracted user data: ID=%d, FirstName=%s, Username=%s",
-				telegramID, firstName, username)
-		}
-
-		// Формируем checkMap из всех параметров кроме hash и signature
-		checkMap = make(map[string]string)
-		for key, values := range parsed {
-			if (key == "hash" || key == "signature") || len(values) == 0 {
-				continue
-			}
-			checkMap[key] = values[0]
-		}
-
-		// Устанавливаем hash для проверки
-		dto.Hash = hash
-
-		log.Printf("DEBUG: CheckMap keys: %v", getKeys2(checkMap))
-
-	} else {
-		// Используем данные из отдельных полей (для веб-виджета)
-		log.Printf("DEBUG: Using web widget data")
-
-		telegramID = dto.TelegramID
-		firstName = dto.FirstName
-		lastName = dto.LastName
-		username = dto.Username
-		photoURL = dto.PhotoURL
-
-		// Проверка времени
-		if err := validateAuthDate(dto.AuthDate); err != nil {
-			return model.TokenPair{}, err
-		}
-
-		// Формируем checkMap из переданных полей
-		checkMap = map[string]string{
-			"auth_date": fmt.Sprintf("%d", dto.AuthDate),
-			"id":        fmt.Sprintf("%d", dto.TelegramID),
-		}
-
-		if firstName != "" {
-			checkMap["first_name"] = firstName
-		}
-		if lastName != "" {
-			checkMap["last_name"] = lastName
-		}
-		if username != "" {
-			checkMap["username"] = username
-		}
-		if photoURL != "" {
-			checkMap["photo_url"] = photoURL
-		}
+		return a.upsertUserAndIssueTokens(
+			ctx,
+			idata.User.ID,
+			idata.User.Username,
+			idata.User.FirstName,
+			idata.User.LastName,
+			idata.User.PhotoURL,
+		)
 	}
 
-	// 3. Проверяем подпись
-	log.Printf("DEBUG: Checking auth with hash: %s, checkMap: %+v", dto.Hash, checkMap)
-	valid := false
-	if dto.InitData != "" {
-		valid = telegram.CheckWebAppAuth(checkMap, dto.Hash, a.cfg.TelegramBotToken)
-	} else {
-		valid = telegram.CheckAuth(checkMap, dto.Hash, a.cfg.TelegramBotToken)
+	// ――― 2.  Классический Web-виджет (id + auth_date + hash) ―――
+	if in.TelegramID == 0 || in.AuthDate == 0 || in.Hash == "" {
+		return model.TokenPair{}, customErrors.NewInvalidArgument("missing required telegram auth data")
 	}
-	if !valid {
-		log.Printf("DEBUG: CheckAuth failed!")
-		log.Printf("CheckMap: %+v", checkMap)
-		log.Printf("Hash: %s", dto.Hash)
-		log.Printf("BotToken length: %d", len(a.cfg.TelegramBotToken))
+
+	// 2.1 Строим «сырой» query-string в порядке полей, как требует Telegram
+	raw := buildRawQuery(in) // см. helper ниже
+
+	// 2.2 Получаем bot-id (число до «:» в token)
+	botID, _ := strconv.ParseInt(strings.Split(a.cfg.TelegramBotToken, ":")[0], 10, 64)
+
+	// 2.3 ValidateThirdParty проверит хэш (без поля signature) и TTL
+	if err := initdata.ValidateThirdParty(raw, botID, initDataTTL); err != nil {
 		return model.TokenPair{}, customErrors.ErrInvalidCredentials
 	}
 
-	log.Printf("DEBUG: CheckAuth succeeded!")
+	// 2.4 Всё ок — заводим / обновляем пользователя
+	return a.upsertUserAndIssueTokens(
+		ctx,
+		in.TelegramID,
+		in.Username,
+		in.FirstName,
+		in.LastName,
+		in.PhotoURL,
+	)
+}
 
-	// 4. Создание/обновление пользователя
-	user, err := a.userRepo.GetUserByTelegramID(ctx, telegramID)
-	if err != nil && !errors.Is(err, customErrors.ErrNotFound) {
-		return model.TokenPair{}, customErrors.WrapInternal(err, "TelegramAuth")
-	}
+// ────────────────────────────────────────────────────────────────────────────────
+// HELPERS
 
-	if errors.Is(err, customErrors.ErrNotFound) {
-		email := fmt.Sprintf("tg%d@telegram.local", telegramID)
+// upsertUserAndIssueTokens сохраняет/обновляет пользователя и выдаёт пару токенов
+func (a *authService) upsertUserAndIssueTokens(
+	ctx context.Context,
+	tgID int64,
+	username, firstName, lastName, photoURL string,
+) (model.TokenPair, error) {
+
+	user, err := a.userRepo.GetUserByTelegramID(ctx, tgID)
+	switch {
+	case err == nil: // найден — можно обновить
+		if updateUser(&user, username, firstName, lastName, photoURL) {
+			_ = a.userRepo.UpdateUser(ctx, user) // best-effort
+		}
+	case errors.Is(err, customErrors.ErrNotFound): // не найден — создаём
+		email := fmt.Sprintf("tg%d@telegram.local", tgID)
 		passHash, _ := argon2id.CreateHash(uuid.NewString()+a.cfg.PasswordPepper, argon2id.DefaultParams)
+
 		user = model.User{
 			ID:              uuid.New(),
 			Email:           email,
 			PasswordHash:    passHash,
-			Username:        nonEmpty(username, fmt.Sprintf("tg%d", telegramID)),
-			TelegramID:      telegramID,
+			Username:        nonEmpty(username, fmt.Sprintf("tg%d", tgID)),
+			TelegramID:      tgID,
 			FirstName:       firstName,
 			LastName:        lastName,
 			ProfilePhotoURL: photoURL,
 		}
-		if _, err := a.userRepo.CreateUser(ctx, user); err != nil {
+		if _, err = a.userRepo.CreateUser(ctx, user); err != nil {
 			return model.TokenPair{}, customErrors.WrapInternal(err, "CreateUser")
 		}
-	} else {
-		// Обновляем существующего пользователя
-		changed := false
-		if username != "" && user.Username != username {
-			user.Username = username
-			changed = true
-		}
-		if firstName != "" && user.FirstName != firstName {
-			user.FirstName = firstName
-			changed = true
-		}
-		if lastName != "" && user.LastName != lastName {
-			user.LastName = lastName
-			changed = true
-		}
-		if photoURL != "" && user.ProfilePhotoURL != photoURL {
-			user.ProfilePhotoURL = photoURL
-			changed = true
-		}
-		if changed {
-			if err := a.userRepo.UpdateUser(ctx, user); err != nil {
-				// Логируем ошибку, но не прерываем процесс
-				log.Printf("Warning: failed to update user: %v", err)
-			}
-		}
+	default: // другая ошибка
+		return model.TokenPair{}, customErrors.WrapInternal(err, "GetUserByTelegramID")
 	}
 
-	// 5. Генерируем токены
-	accessToken, atExp, _, err := a.jwtUtil.GenerateAccessToken(user.ID, []string{"user"})
+	// JWT-пара
+	at, atExp, _, err := a.jwtUtil.GenerateAccessToken(user.ID, []string{"user"})
 	if err != nil {
-		return model.TokenPair{}, customErrors.WrapInternal(err, "GenerateAccessToken")
+		return model.TokenPair{}, customErrors.WrapInternal(err, "GenAccess")
 	}
-	refreshToken, rtExp, _, err := a.jwtUtil.GenerateRefreshToken(user.ID)
+	rt, rtExp, _, err := a.jwtUtil.GenerateRefreshToken(user.ID)
 	if err != nil {
-		return model.TokenPair{}, customErrors.WrapInternal(err, "GenerateRefreshToken")
+		return model.TokenPair{}, customErrors.WrapInternal(err, "GenRefresh")
 	}
-	nowTime := time.Now()
 
+	now := time.Now()
 	return model.TokenPair{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		AccessTTL:    atExp.Sub(nowTime),
-		RefreshTTL:   rtExp.Sub(nowTime),
+		AccessToken:  at,
+		RefreshToken: rt,
+		AccessTTL:    atExp.Sub(now),
+		RefreshTTL:   rtExp.Sub(now),
 		UserId:       user.ID,
 	}, nil
 }
 
-// Вспомогательные функции
-func validateAuthDate(authDate int64) error {
-	now := time.Now().Unix()
-	authAge := now - authDate
-	if authAge > 86400 { // 24 часа
-		return customErrors.NewInvalidArgument("auth_date too old")
+// buildRawQuery формирует строку вида "auth_date=…&id=…&username=…&hash=…"
+func buildRawQuery(in dto.TelegramAuthDTO) string {
+	q := make([]string, 0, 5)
+	q = append(q, "auth_date="+strconv.FormatInt(in.AuthDate, 10))
+	q = append(q, "id="+strconv.FormatInt(in.TelegramID, 10))
+	if in.Username != "" {
+		q = append(q, "username="+in.Username)
 	}
-	if authAge < -300 { // не более 5 минут в будущем
-		return customErrors.NewInvalidArgument("auth_date in future")
+	if in.FirstName != "" {
+		q = append(q, "first_name="+in.FirstName)
 	}
-	return nil
+	if in.LastName != "" {
+		q = append(q, "last_name="+in.LastName)
+	}
+	if in.PhotoURL != "" {
+		q = append(q, "photo_url="+in.PhotoURL)
+	}
+	q = append(q, "hash="+in.Hash)
+	return strings.Join(q, "&")
 }
 
-func getKeys(m url.Values) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
+func updateUser(u *model.User, username, fn, ln, photo string) (changed bool) {
+	if username != "" && u.Username != username {
+		u.Username, changed = username, true
 	}
-	return keys
-}
-
-func getKeys2(m map[string]string) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
+	if fn != "" && u.FirstName != fn {
+		u.FirstName, changed = fn, true
 	}
-	return keys
+	if ln != "" && u.LastName != ln {
+		u.LastName, changed = ln, true
+	}
+	if photo != "" && u.ProfilePhotoURL != photo {
+		u.ProfilePhotoURL, changed = photo, true
+	}
+	return
 }
 
 func nonEmpty(s, fallback string) string {
