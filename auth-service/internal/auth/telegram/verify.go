@@ -68,8 +68,8 @@ func CheckWebAppAuth(params map[string]string, hash, token string) bool {
 	data := sb.String()
 
 	// 3. secret_key = HMAC_SHA256(bot_token, "WebAppData")
-	mac1 := hmac.New(sha256.New, []byte("WebAppData"))
-	mac1.Write([]byte(token))
+	mac1 := hmac.New(sha256.New, []byte(token))
+	mac1.Write([]byte("WebAppData"))
 	secret := mac1.Sum(nil)
 
 	// 4. expected_hash = HMAC_SHA256(data-check-string, secret_key)
