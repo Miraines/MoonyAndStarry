@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -117,17 +118,52 @@ func (a *authService) Login(ctx context.Context, dto dto.LoginDTO) (model.TokenP
 }
 
 func (a *authService) TelegramAuth(ctx context.Context, dto dto.TelegramAuthDTO) (model.TokenPair, error) {
+	if dto.ID == 0 && dto.User != "" {
+		var tgUser struct {
+			ID        int64  `json:"id"`
+			FirstName string `json:"first_name"`
+			LastName  string `json:"last_name"`
+			Username  string `json:"username"`
+			PhotoURL  string `json:"photo_url"`
+		}
+		if err := json.Unmarshal([]byte(dto.User), &tgUser); err != nil {
+			return model.TokenPair{}, customErrors.NewInvalidArgument(err.Error())
+		}
+		dto.ID = tgUser.ID
+		if dto.FirstName == "" {
+			dto.FirstName = tgUser.FirstName
+		}
+		if dto.LastName == "" {
+			dto.LastName = tgUser.LastName
+		}
+		if dto.Username == "" {
+			dto.Username = tgUser.Username
+		}
+		if dto.PhotoURL == "" {
+			dto.PhotoURL = tgUser.PhotoURL
+		}
+	}
+
 	if err := a.v.Struct(dto); err != nil {
 		return model.TokenPair{}, customErrors.NewInvalidArgument(err.Error())
 	}
-	// ⚠️  Собираем map без hash
-	checkMap := map[string]string{
-		"auth_date":  fmt.Sprintf("%d", dto.AuthDate),
-		"first_name": dto.FirstName,
-		"id":         fmt.Sprintf("%d", dto.ID),
-		"last_name":  dto.LastName, // пустую строку оставляем!
-		"username":   dto.Username,
-		"photo_url":  dto.PhotoURL,
+
+	var checkMap map[string]string
+	if dto.User != "" {
+		checkMap = map[string]string{
+			"auth_date": fmt.Sprintf("%d", dto.AuthDate),
+			"query_id":  dto.QueryID,
+			"user":      dto.User,
+		}
+	} else {
+		checkMap = map[string]string{
+			"auth_date":  fmt.Sprintf("%d", dto.AuthDate),
+			"first_name": dto.FirstName,
+			"id":         fmt.Sprintf("%d", dto.ID),
+			"last_name":  dto.LastName,
+			"username":   dto.Username,
+			"photo_url":  dto.PhotoURL,
+		}
 	}
 
 	if !telegram.CheckAuth(checkMap, dto.Hash, a.cfg.TelegramBotToken) {

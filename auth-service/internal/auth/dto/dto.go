@@ -31,4 +31,6 @@ type TelegramAuthDTO struct {
 	PhotoURL  string `form:"photo_url"  json:"photo_url"`
 	AuthDate  int64  `form:"auth_date"  json:"auth_date"  validate:"required"`
 	Hash      string `form:"hash"       json:"hash"       validate:"required"`
+	QueryID   string `form:"query_id"   json:"query_id"`
+	User      string `form:"user"       json:"user"`
 }

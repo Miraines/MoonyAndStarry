@@ -75,7 +75,7 @@ func (h *Handler) Login(ctx context.Context, req *authv1.LoginRequest) (*authv1.
 }
 
 func (h *Handler) TelegramAuth(ctx context.Context, req *authv1.TelegramAuthRequest) (*authv1.LoginResponse, error) {
-	log.Printf("gRPC TelegramAuth called: id=%s first_name=%s last_name=%s username=%s photo_url=%s auth_date=%d hash=%s",
+	log.Printf("gRPC TelegramAuth called: id=%d first_name=%s last_name=%s username=%s photo_url=%s auth_date=%d hash=%s",
 		req.Id, req.FirstName, req.LastName, req.Username, req.PhotoUrl, req.AuthDate, req.Hash)
 
 	pair, err := h.svc.TelegramAuth(ctx, dto.TelegramAuthDTO{
