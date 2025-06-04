@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 	"os"
@@ -188,6 +189,8 @@ func main() {
 			"photo_url":  c.Query("photo_url"),
 			"auth_date":  c.Query("auth_date"),
 			"hash":       c.Query("hash"),
+			"query_id":   c.Query("query_id"),
+			"user":       c.Query("user"),
 		}
 		log.Printf("HTTP /login/telegram query: %+v", fields)
 
@@ -196,6 +199,34 @@ func main() {
 			log.Printf("HTTP /login/telegram bind error: %v", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
+		}
+
+		if body.ID == 0 && body.User != "" {
+			var tgUser struct {
+				ID        int64  `json:"id"`
+				FirstName string `json:"first_name"`
+				LastName  string `json:"last_name"`
+				Username  string `json:"username"`
+				PhotoURL  string `json:"photo_url"`
+			}
+			if err := json.Unmarshal([]byte(body.User), &tgUser); err != nil {
+				log.Printf("HTTP /login/telegram user parse error: %v", err)
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			body.ID = tgUser.ID
+			if body.FirstName == "" {
+				body.FirstName = tgUser.FirstName
+			}
+			if body.LastName == "" {
+				body.LastName = tgUser.LastName
+			}
+			if body.Username == "" {
+				body.Username = tgUser.Username
+			}
+			if body.PhotoURL == "" {
+				body.PhotoURL = tgUser.PhotoURL
+			}
 		}
 
 		// Передаём DTO в сервис
