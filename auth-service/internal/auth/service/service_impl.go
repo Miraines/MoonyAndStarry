@@ -22,7 +22,8 @@ import (
 
 const (
 	// Время жизни init_data (24 часа)
-	initDataTTL = 24 * time.Hour
+	initDataTTL    = 24 * time.Hour
+	authDateMaxAge = 24 * time.Second
 )
 
 type authService struct {
@@ -134,10 +135,13 @@ func (a *authService) TelegramAuth(
 		if err := initdata.ValidateThirdParty(in.InitData, botID, initDataTTL); err != nil {
 			return model.TokenPair{}, customErrors.ErrInvalidCredentials
 		}
-
 		idata, err := initdata.Parse(in.InitData)
 		if err != nil {
 			return model.TokenPair{}, customErrors.NewInvalidArgument("malformed init_data")
+		}
+
+		if time.Since(idata.AuthDate()) > authDateMaxAge {
+			return model.TokenPair{}, customErrors.ErrInvalidCredentials
 		}
 
 		return a.upsertUserAndIssueTokens(
@@ -148,6 +152,10 @@ func (a *authService) TelegramAuth(
 			idata.User.LastName,
 			idata.User.PhotoURL,
 		)
+	}
+
+	if in.AuthDate != 0 && time.Since(time.Unix(in.AuthDate, 0)) > authDateMaxAge {
+		return model.TokenPair{}, customErrors.ErrInvalidCredentials
 	}
 
 	return a.upsertUserAndIssueTokens(
