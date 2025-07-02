@@ -15,6 +15,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/jackc/pgconn v1.14.3
 	github.com/pkg/errors v0.9.1
 	github.com/redis/go-redis/v9 v9.7.3

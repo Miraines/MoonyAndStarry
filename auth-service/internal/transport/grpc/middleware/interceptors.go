@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 	"net"
 	"sync"
+	"time"
 )
 
 func RecoveryInterceptor() grpc.UnaryServerInterceptor {
@@ -63,6 +64,6 @@ func ChainUnaryServer(logger *zap.Logger, limit, burst int) grpc.UnaryServerInte
 		RecoveryInterceptor(),
 		LoggingInterceptor(logger),
 		MetricsInterceptor(),
-		RateLimitPerIP(limit, burst),
+		NewRateLimitPerIP(limit, burst, 10_000, time.Hour),
 	)
 }

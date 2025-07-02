@@ -16,20 +16,20 @@ func NewRedisTokenRepo(client *redis.Client) *RedisTokenRepo {
 	}
 }
 
-func (r *RedisTokenRepo) Revoke(ctx context.Context, jti string, expiresAt time.Time) error {
-	err := r.client.Set(ctx, jti, "revoked:"+jti, time.Until(expiresAt)).Err()
-	if err != nil {
-		return err
-	}
-
-	return nil
+func (r *RedisTokenRepo) Revoke(ctx context.Context, jti string, exp time.Time) error {
+	return r.client.Set(ctx, jti, 1, time.Until(exp)).Err()
 }
 
 func (r *RedisTokenRepo) IsRevoked(ctx context.Context, jti string) (bool, error) {
-	count, err := r.client.Exists(ctx, jti).Result()
-	if err != nil {
-		return false, err
-	}
+	n, err := r.client.Exists(ctx, jti).Result()
+	return n > 0, err
+}
 
-	return count > 0, nil
+func (r *RedisTokenRepo) RevokeAccess(ctx context.Context, jti string, exp time.Time) error {
+	return r.client.Set(ctx, "a:"+jti, 1, time.Until(exp)).Err()
+}
+
+func (r *RedisTokenRepo) IsAccessRevoked(ctx context.Context, jti string) (bool, error) {
+	n, err := r.client.Exists(ctx, "a:"+jti).Result()
+	return n > 0, err
 }

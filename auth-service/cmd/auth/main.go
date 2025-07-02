@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	telegramloginwidget "github.com/LipsarHQ/go-telegram-login-widget"
+	"github.com/Miraines/MoonyAndStarry/auth-service/internal/auth/model"
 	"log"
 	"net/http"
 	"os"
@@ -32,6 +33,22 @@ import (
 	myGrpc "github.com/Miraines/MoonyAndStarry/auth-service/internal/transport/grpc"
 	"github.com/gin-contrib/cors"
 )
+
+func issueTokens(c *gin.Context, pair model.TokenPair) {
+	const domain = ".example.com" // TODO: заменить на свой домен
+
+	c.SetSameSite(http.SameSiteStrictMode)
+	c.SetCookie("access_token", pair.AccessToken,
+		int(pair.AccessTTL.Seconds()),
+		"/", domain, true, true)
+
+	c.JSON(http.StatusOK, gin.H{
+		"accessToken":  pair.AccessToken,
+		"refreshToken": pair.RefreshToken,
+		"expiresIn":    int(pair.AccessTTL.Seconds()),
+		"userId":       pair.UserId.String(),
+	})
+}
 
 func main() {
 	zapLog, err := zap.NewProduction()
@@ -116,13 +133,12 @@ func main() {
 	})
 
 	corsConfig := cors.Config{
-		AllowOrigins: []string{
-			"https://miraines.github.io",
-			"https://7d24-84-19-3-112.ngrok-free.app",
-		}, AllowMethods: []string{"GET", "POST", "OPTIONS"},
+		AllowOrigins:     cfg.AllowedOrigins,
+		AllowMethods:     []string{"GET", "POST", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept"},
 		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: false,
+		AllowCredentials: cfg.AllowCredentials,
+		MaxAge:           12 * time.Hour,
 	}
 	router.Use(cors.New(corsConfig))
 
@@ -141,12 +157,7 @@ func main() {
 			handleError(c, err)
 			return
 		}
-		c.JSON(http.StatusCreated, gin.H{
-			"accessToken":  pair.AccessToken,
-			"refreshToken": pair.RefreshToken,
-			"expiresIn":    int(pair.AccessTTL.Seconds()),
-			"userId":       pair.UserId.String(),
-		})
+		issueTokens(c, pair)
 	})
 
 	router.POST("/login", func(c *gin.Context) {
@@ -164,12 +175,7 @@ func main() {
 			handleError(c, err)
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{
-			"accessToken":  pair.AccessToken,
-			"refreshToken": pair.RefreshToken,
-			"expiresIn":    int(pair.AccessTTL.Seconds()),
-			"userId":       pair.UserId.String(),
-		})
+		issueTokens(c, pair)
 	})
 
 	router.GET("/login/telegram", func(c *gin.Context) {
@@ -217,12 +223,7 @@ func main() {
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{
-			"accessToken":  pair.AccessToken,
-			"refreshToken": pair.RefreshToken,
-			"expiresIn":    int(pair.AccessTTL.Seconds()),
-			"userId":       pair.UserId.String(),
-		})
+		issueTokens(c, pair)
 	})
 
 	router.POST("/login/telegram", func(c *gin.Context) {
@@ -264,19 +265,14 @@ func main() {
 		log.Printf("Final data: InitData=%t, TelegramID=%d, AuthDate=%d, Hash=%s",
 			body.InitData != "", body.TelegramID, body.AuthDate, body.Hash)
 
-		pair, err := svc.TelegramAuth(c, body)
+		pair, err := svc.TelegramAuth(c.Request.Context(), body)
 		if err != nil {
 			log.Printf("Service TelegramAuth error: %v", err)
 			handleError(c, err)
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{
-			"accessToken":  pair.AccessToken,
-			"refreshToken": pair.RefreshToken,
-			"expiresIn":    int(pair.AccessTTL.Seconds()),
-			"userId":       pair.UserId.String(),
-		})
+		issueTokens(c, pair)
 	})
 
 	router.POST("/logout", func(c *gin.Context) {
@@ -303,7 +299,7 @@ func main() {
 
 	srv := &http.Server{Addr: ":8080", Handler: router}
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && !stdErr.Is(err, http.ErrServerClosed) {
+		if err := srv.ListenAndServeTLS(cfg.HTTPSCertFile, cfg.HTTPSKeyFile); err != nil && !stdErr.Is(err, http.ErrServerClosed) {
 			zapLog.Error("http server error", zap.Error(err))
 		}
 	}()

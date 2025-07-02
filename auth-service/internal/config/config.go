@@ -22,6 +22,10 @@ type Config struct {
 	Audience          string
 	GRPCAddress       string
 	TelegramBotToken  string
+	HTTPSCertFile     string
+	HTTPSKeyFile      string
+	AllowedOrigins    []string
+	AllowCredentials  bool
 }
 
 func Load() (*Config, error) {
@@ -41,6 +45,8 @@ func Load() (*Config, error) {
 		"REDIS_ADDRESS",
 		"REDIS_PASSWORD",
 		"REDIS_DB",
+		"ALLOWED_ORIGINS",
+		"ALLOW_CREDENTIALS",
 		"PASSWORD_PEPPER",
 		"JWT_ISSUER",
 		"JWT_AUDIENCE",
@@ -72,6 +78,10 @@ func Load() (*Config, error) {
 		Audience:          viper.GetString("JWT_AUDIENCE"),
 		GRPCAddress:       viper.GetString("GRPC_ADDRESS"),
 		TelegramBotToken:  viper.GetString("TELEGRAM_BOT_TOKEN"),
+		AllowedOrigins:    viper.GetStringSlice("ALLOWED_ORIGINS"),
+		AllowCredentials:  viper.GetBool("ALLOW_CREDENTIALS"),
+		HTTPSCertFile:     viper.GetString("HTTPS_CERT_FILE"),
+		HTTPSKeyFile:      viper.GetString("HTTPS_KEY_FILE"),
 	}
 
 	if cfg.DatabaseURL == "" {

@@ -249,7 +249,7 @@ func (a *authService) Validate(ctx context.Context, dto dto.ValidateDTO) (model.
 		return model.User{}, customErrors.ErrInvalidToken
 	}
 
-	revoked, err := a.tokenRepo.IsRevoked(ctx, claims.ID)
+	revoked, err := a.tokenRepo.IsAccessRevoked(ctx, claims.ID)
 	if err != nil {
 		return model.User{}, customErrors.WrapInternal(err, "Validate")
 	}
@@ -331,9 +331,12 @@ func (a *authService) Logout(ctx context.Context, dto dto.LogoutDTO) error {
 		return customErrors.ErrInvalidToken
 	}
 
-	err = a.tokenRepo.Revoke(ctx, claims.ID, claims.ExpiresAt.Time)
-	if err != nil {
+	if err := a.tokenRepo.Revoke(ctx, claims.ID, claims.ExpiresAt.Time); err != nil {
 		return customErrors.WrapInternal(err, "Logout")
+	}
+
+	if jtiAccess := ctx.Value("access_jti"); jtiAccess != nil {
+		_ = a.tokenRepo.RevokeAccess(ctx, jtiAccess.(string), time.Now().Add(a.cfg.AccessTokenTTL))
 	}
 
 	return nil

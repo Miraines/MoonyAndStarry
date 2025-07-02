@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/reflection"
 	"net"
 	"os"
@@ -29,8 +30,14 @@ func StartGRPCServer(cfg *config.Config, handler authv1.AuthServer, logger *zap.
 	// 3. Составить цепочку Unary‐interceptor‐ов из вашего middleware-пакета
 	unaryInterceptor := middleware.ChainUnaryServer(logger, 10, 100)
 
+	creds, err := credentials.NewServerTLSFromFile(cfg.HTTPSCertFile, cfg.HTTPSKeyFile)
+	if err != nil {
+		return err
+	}
+
 	// 4. Создать сам gRPC‐сервер
 	grpcServer := grpc.NewServer(
+		grpc.Creds(creds),
 		grpc.UnaryInterceptor(unaryInterceptor),
 	)
 
